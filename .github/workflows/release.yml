@@ -62,13 +62,16 @@ jobs:
 
       - name: Package .rpm
         run: |
-          bash scripts/build-rpm.sh ${{ steps.version.outputs.LATEST }}
-          echo "RPM_NAME=$(ls dist/*.rpm 2>/dev/null || echo '')" >> "$GITHUB_OUTPUT"
+          sudo apt-get install -y -qq alien
+          sudo alien -r dist/*.deb --scripts
+          mv *.rpm dist/ 2>/dev/null || true
+          ls dist/*.rpm
 
-      - name: Package .pkg.tar.zst
+      - name: Package .pkg.tar.zst (experimental)
+        continue-on-error: true
         run: |
-          bash scripts/build-pacman.sh ${{ steps.version.outputs.LATEST }}
-          echo "PACMAN_NAME=$(ls dist/*.pkg.tar.zst 2>/dev/null || echo '')" >> "$GITHUB_OUTPUT"
+          bash scripts/build-pacman.sh ${{ steps.version.outputs.LATEST }} || \
+            echo "::warning::Arch packaging failed — build script needs manual setup"
 
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v4
@@ -82,7 +85,7 @@ jobs:
         with:
           name: factory-desktop-rpm
           path: dist/*.rpm
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: Upload .pkg.tar.zst artifact
         uses: actions/upload-artifact@v4
