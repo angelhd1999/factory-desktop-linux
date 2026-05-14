@@ -98,6 +98,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -105,9 +107,15 @@ jobs:
           merge-multiple: true
           path: dist/
 
+      - name: List artifacts
+        run: find dist -type f -ls
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          files: dist/*
-          generate_release_notes: true
-          draft: false
+          files: |
+            dist/*.deb
+            dist/*.rpm
+            dist/*.pkg.tar.zst
