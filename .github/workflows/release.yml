@@ -4,8 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-  schedule:
-    - cron: '0 2 * * *'  # Daily check for new versions
   workflow_dispatch:
     inputs:
       version:
@@ -16,53 +14,82 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        format: [deb, rpm, pacman]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       - name: Install build dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y p7zip-full dpkg-dev fakeroot
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq p7zip-full dpkg-dev fakeroot rpm zstd libarchive-tools
+          npm install @electron/asar
 
-      - name: Install RPM build tools (for .rpm)
-        if: matrix.format == 'rpm'
-        run: sudo apt-get install -y rpm
-
-      - name: Install Arch build tools (for .pkg.tar.zst)
-        if: matrix.format == 'pacman'
-        run: sudo apt-get install -y zstd libarchive-tools
-
-      - name: Download Factory Desktop DMG
-        env:
-          VERSION: ${{ github.event.inputs.version }}
+      - name: Fetch latest version
+        id: version
         run: |
-          make download
-          V=$(cat .current-version 2>/dev/null || echo "$VERSION")
-          echo "FACTORY_VERSION=$V" >> "$GITHUB_ENV"
+          LATEST=$(curl -sfL https://api.factory.ai/api/desktop/latest-version | python3 -c "import sys,json; print(json.load(sys.stdin)['latestVersion'])")
+          echo "LATEST=$LATEST"
+          echo "LATEST=$LATEST" >> "$GITHUB_OUTPUT"
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "LATEST=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Build
-        run: make all
+      - name: Download Factory DMG
+        run: |
+          curl -sfL -o Factory-arm64.dmg \
+            "https://app.factory.ai/api/desktop?platform=darwin&architecture=arm64" \
+            -w "\nHTTP %{http_code} | %{size_download} bytes"
 
-      - name: Patch integrity check
-        run: python3 scripts/check-patches.py
+      - name: Extract and patch
+        run: |
+          make extract
+          make patch
+          python3 scripts/check-patches.py
+          make asar
 
-      - name: Package (${{ matrix.format }})
-        run: bash scripts/build-${{ matrix.format }}.sh "$FACTORY_VERSION"
+      - name: Download Electron and assemble
+        run: |
+          make electron
+          make assemble
 
-      - name: Upload artifact
+      - name: Package .deb
+        run: |
+          bash scripts/build-deb.sh ${{ steps.version.outputs.LATEST }}
+          echo "DEB_NAME=$(ls dist/*.deb)" >> "$GITHUB_OUTPUT"
+
+      - name: Package .rpm
+        run: |
+          bash scripts/build-rpm.sh ${{ steps.version.outputs.LATEST }}
+          echo "RPM_NAME=$(ls dist/*.rpm 2>/dev/null || echo '')" >> "$GITHUB_OUTPUT"
+
+      - name: Package .pkg.tar.zst
+        run: |
+          bash scripts/build-pacman.sh ${{ steps.version.outputs.LATEST }}
+          echo "PACMAN_NAME=$(ls dist/*.pkg.tar.zst 2>/dev/null || echo '')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload .deb artifact
         uses: actions/upload-artifact@v4
         with:
-          name: factory-desktop-${{ matrix.format }}
-          path: dist/factory-desktop_*.deb
+          name: factory-desktop-deb
+          path: dist/*.deb
           if-no-files-found: error
+
+      - name: Upload .rpm artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: factory-desktop-rpm
+          path: dist/*.rpm
+          if-no-files-found: warn
+
+      - name: Upload .pkg.tar.zst artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: factory-desktop-pacman
+          path: dist/*.pkg.tar.zst
+          if-no-files-found: warn
 
   release:
     needs: build

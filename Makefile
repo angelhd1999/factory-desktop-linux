@@ -1,9 +1,10 @@
-.PHONY: all build clean download extract patch asar electron assemble package install help
+.PHONY: all build clean download extract patch asar electron assemble package install help test check
 
 VERSION ?= 0.82.0
 ELECTRON_VERSION = 39.2.7
 DMG_URL = https://app.factory.ai/api/desktop?platform=darwin&architecture=arm64
 ELECTRON_URL = https://github.com/electron/electron/releases/download/v$(ELECTRON_VERSION)/electron-v$(ELECTRON_VERSION)-linux-x64.zip
+ASAR = npx @electron/asar
 
 .DEFAULT_GOAL := help
 
@@ -15,12 +16,14 @@ all: build package  ## Full build: patch + assemble + package
 
 # ── Download ────────────────────────────────────────────────────────
 
-download: Factory-arm64.dmg  ## Download the macOS DMG
-
-Factory-arm64.dmg:
-	@echo "[download] Fetching Factory Desktop macOS DMG..."
-	curl -L -o $@ "$(DMG_URL)" -w "\nHTTP %{http_code} | %{size_download} bytes\n"
-	@echo "[download] Done: $@"
+download:  ## Download the macOS DMG
+	@if [ -f Factory-arm64.dmg ]; then \
+		echo "[download] Factory-arm64.dmg already exists (skip)"; \
+	else \
+		echo "[download] Fetching Factory Desktop macOS DMG..."; \
+		curl -L -o Factory-arm64.dmg "$(DMG_URL)" -w "\nHTTP %{http_code} | %{size_download} bytes\n"; \
+		echo "[download] Done."; \
+	fi
 
 # ── Extract ─────────────────────────────────────────────────────────
 
@@ -30,7 +33,7 @@ extract: download  ## Extract app.asar and bin/droid from DMG
 		'Factory/Factory.app/Contents/Resources/app.asar' \
 		'Factory/Factory.app/Contents/Resources/bin/*' -y
 	@echo "[extract] Unpacking app.asar..."
-	npx @electron/asar extract \
+	$(ASAR) extract \
 		Factory-extracted/Factory/Factory.app/Contents/Resources/app.asar \
 		app-unpacked
 	@echo "[extract] Done."
@@ -46,7 +49,7 @@ patch: extract  ## Apply Linux compatibility patches to JS bundle
 
 asar: patch  ## Repack the patched app.asar
 	@echo "[asar] Repacking app.asar..."
-	npx @electron/asar pack app-unpacked build/app.asar
+	$(ASAR) pack app-unpacked build/app.asar
 	@echo "[asar] Done: build/app.asar"
 
 # ── Electron ────────────────────────────────────────────────────────
