@@ -1,0 +1,38 @@
+# ── Factory Desktop (macOS DMG — do not redistribute) ──────────────
+Factory-arm64.dmg
+Factory-arm64*.dmg
+
+# ── Extracted macOS app (copyrighted) ───────────────────────────────
+Factory-extracted/
+
+# ── Unpacked asar (copyrighted JS) ──────────────────────────────────
+app-unpacked/
+app-original/
+
+# ── Build artifacts ─────────────────────────────────────────────────
+build/
+dist/
+
+# ── Electron downloads ──────────────────────────────────────────────
+*.zip
+
+# ── Node ────────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+
+# ── OS ──────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# ── IDE ─────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+
+# ── Version tracking ────────────────────────────────────────────────
+.current-version
+
+# ── Logs ─────────────────────────────────────────────────────────────
+*.log

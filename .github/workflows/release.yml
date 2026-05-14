@@ -1,0 +1,83 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  schedule:
+    - cron: '0 2 * * *'  # Daily check for new versions
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (leave empty for latest)'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        format: [deb, rpm, pacman]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full dpkg-dev fakeroot
+
+      - name: Install RPM build tools (for .rpm)
+        if: matrix.format == 'rpm'
+        run: sudo apt-get install -y rpm
+
+      - name: Install Arch build tools (for .pkg.tar.zst)
+        if: matrix.format == 'pacman'
+        run: sudo apt-get install -y zstd libarchive-tools
+
+      - name: Download Factory Desktop DMG
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          make download
+          V=$(cat .current-version 2>/dev/null || echo "$VERSION")
+          echo "FACTORY_VERSION=$V" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: make all
+
+      - name: Patch integrity check
+        run: python3 scripts/check-patches.py
+
+      - name: Package (${{ matrix.format }})
+        run: bash scripts/build-${{ matrix.format }}.sh "$FACTORY_VERSION"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: factory-desktop-${{ matrix.format }}
+          path: dist/factory-desktop_*.deb
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: factory-desktop-*
+          merge-multiple: true
+          path: dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          draft: false
