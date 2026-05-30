@@ -36,6 +36,7 @@ def call_qwen(prompt: str, api_key: str) -> str:
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
+            "User-Agent": "factory-desktop-linux/1.0",
         },
     )
 
@@ -48,23 +49,31 @@ def find_context(bundle: str, patch_name: str) -> str:
     """Find relevant context in the bundle for a given patch."""
     if "auto-updater" in patch_name:
         m = re.search(
-            r'process\.platform!=="darwin"&&process\.platform!=="win32".{0,120}',
+            r'.{40}process\.platform!=="darwin"&&process\.platform!=="win32".{120}',
             bundle
         )
         return m.group(0) if m else ""
 
     if "window-all-closed" in patch_name:
-        m = re.search(r'window-all-closed.{0,200}', bundle)
+        m = re.search(r'.{10}window-all-closed.{0,200}', bundle)
         return m.group(0) if m else ""
 
     if "renderer" in patch_name:
         m = re.search(
-            r'\.loadFile\([\w$]{1,3}\.join\(__dirname.{0,250}',
+            r'.{0,5}\.app\.isPackaged\?[\w$]{1,3}\.loadFile\([\w$]{1,3}\.join\(__dirname.{0,300}',
             bundle
         )
         return m.group(0) if m else ""
 
     return ""
+
+
+# Known-good regex patterns (as fallback reference for Qwen)
+KNOWN_PATTERNS = {
+    "auto-updater": r'process\.platform!=="darwin"&&process\.platform!=="win32"',
+    "window-all-closed": r'process\.platform!=="darwin"&&([\w$]{1,3})\.app\.quit\(\)',
+    "renderer": r'([\w$]{1,3})\.app\.isPackaged\?([\w$]{1,3})\.loadFile\(([\w$]{1,3})\.join\(__dirname,"\.\.","renderer","main_window","index\.html"\)\):\(\2\.loadURL\("http:\/\/localhost:5173"\),\2\.webContents\.openDevTools\(\)\)',
+}
 
 
 def repair_regex(bundle: str, patch_name: str, old_find: str, api_key: str) -> str:
@@ -74,26 +83,39 @@ def repair_regex(bundle: str, patch_name: str, old_find: str, api_key: str) -> s
         print(f"  Could not find context for {patch_name}")
         return ""
 
-    prompt = f"""I had a regex pattern that stopped matching after a Vite/Webpack build renamed minified variable names.
+    # Find the known-good pattern as a reference
+    known = ""
+    for key, pattern in KNOWN_PATTERNS.items():
+        if key in patch_name:
+            known = pattern
+            break
+
+    prompt = f"""A JavaScript regex stopped matching after Vite/Webpack renamed minified variable names (1-3 chars).
+The SEMANTICS are identical — only variable names changed.
 
 Patch: {patch_name}
 
-Old regex: {old_find}
+Old regex that worked before the rename:
+  {old_find}
 
-Context from the NEW bundle (where the pattern should be):
+Known-good reference regex (from a different version):
+  {known}
+
+Context from the NEW bundle where the pattern should be found:
 ```
 {context}
 ```
 
-The semantic logic is the same — only 1-3 character variable names changed.
-Give me a NEW JavaScript regex that matches the new bundle.
-Rules:
-- Use [\\w$]{{1,3}} for any minified 1-3 char variable name that may change
-- Keep process.platform and other literals exact
-- Escape all special regex chars
-- If the regex uses backreferences (\\1, \\2), keep them
-- Output ONLY the regex literal between / / delimiters, nothing else
-- Example output: /process\\.platform!=="darwin"&&([\\w$]{{1,3}})\\.app\\.quit\\(\\)/"""
+Your task: write a NEW JavaScript regex that matches the EXACT SAME semantic pattern
+in the new bundle, replacing minified variable names with [\\w$]{{1,3}}.
+
+IMPORTANT:
+- Match the FULL pattern at the same semantic scope as the old regex
+- If the old regex matched a full ternary (a?b:c), match the full ternary
+- If the old regex used backreferences (\\1, \\2), preserve them
+- Escape all regex special characters: . ( ) [ ] {{ }} + * ? ^ $ | \\
+- Output ONLY the regex content between / / delimiters — no explanation
+- Example: /process\\.platform!=="darwin"&&([\\w$]{{1,3}})\\.app\\.quit\\(\\)/"""
 
     try:
         response = call_qwen(prompt, api_key)
@@ -130,7 +152,11 @@ def extract_patch_info(patch_js_content: str) -> list:
 
         if name_m and find_m:
             find_val = find_m.group(1)
-            if find_val.startswith("/"):
+            # Strip surrounding quotes from string values
+            if (find_val.startswith('"') and find_val.endswith('"')) or \
+               (find_val.startswith("'") and find_val.endswith("'")):
+                find_val = find_val[1:-1]
+            elif find_val.startswith("/"):
                 # Regex: extract the pattern between slashes
                 find_val = find_val.strip("/")
                 # Remove flags
@@ -153,15 +179,39 @@ def update_patch_js(patches: list) -> None:
     content = PATCH_JS.read_text()
 
     for p in patches:
-        if p.get("new_find"):
-            new_find_js = f"/{p['new_find']}/"
-            old_block = p["block"]
-            new_block = old_block.replace(
-                f"find: {old_block[old_block.index('find:'):].split(',')[0].strip()}",
-                f"find: {new_find_js}"
+        if not p.get("new_find"):
+            continue
+
+        new_find_js = f"/{p['new_find']}/"
+        name = p["name"]
+
+        # Find the patch block by name, then replace its find field
+        escaped_name = name.replace("'", "\\'")
+        # Pattern: name: 'PatchName', ... find: /OLD/,
+        pattern = re.compile(
+            rf"(name:\s*'{re.escape(name)}'[^}}]*?find:\s*)/([^/]+)/",
+            re.DOTALL
+        )
+
+        def make_replacement(m, new_find=p["new_find"]):
+            return f"{m.group(1)}/{new_find}/"
+
+        new_content = pattern.sub(make_replacement, content)
+        if new_content != content:
+            content = new_content
+            print(f"  Updated {name}")
+        else:
+            # Fallback: try with double-quoted find strings
+            pattern2 = re.compile(
+                rf"(name:\s*'{re.escape(name)}'[^}}]*?find:\s*)\"[^\"]+\"",
+                re.DOTALL
             )
-            content = content.replace(old_block, new_block)
-            print(f"  Updated {p['name']}: {new_find_js}")
+            new_content = pattern2.sub(rf'\1"{p["new_find"]}"', content)
+            if new_content != content:
+                content = new_content
+                print(f"  Updated {name} (string mode)")
+            else:
+                print(f"  WARNING: Could not update {name} — pattern not found")
 
     PATCH_JS.write_text(content)
     print(f"  Wrote {PATCH_JS}")
@@ -186,6 +236,8 @@ def main():
     for p in patches:
         if p["verify_only"]:
             continue
+        if p["type"] == "exact":
+            continue  # Exact strings need manual update if they change
 
         # Test if the current regex matches
         try:
