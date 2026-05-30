@@ -35,7 +35,7 @@ checks = [
     ),
     (
         "Patch 2: window-all-closed keeps daemon alive on Linux",
-        'process.platform==="win32"&&z.app.quit()' in content,
+        'process.platform==="win32"&&fe.app.quit()' in content,
     ),
     (
         "Patch 3: daemon binary uses 'droid' on non-Windows",
@@ -43,8 +43,8 @@ checks = [
     ),
     (
         "Patch 4: renderer loads from file unconditionally (dev branch removed)",
-        'Tt.loadFile(Ve.join(__dirname,"..","renderer","main_window","index.html"))' in content
-        and 'z.app.isPackaged?Tt.loadFile(' not in content,
+        '$t.loadFile(xe.join(__dirname,"..","renderer","main_window","index.html"))' in content
+        and 'fe.app.isPackaged?$t.loadFile(' not in content,
     ),
 ]
 

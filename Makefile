@@ -1,6 +1,6 @@
 .PHONY: all build clean download extract patch asar electron assemble package install help test check
 
-VERSION ?= 0.82.0
+VERSION ?= 0.94.1
 ELECTRON_VERSION = 39.2.7
 DMG_URL = https://app.factory.ai/api/desktop?platform=darwin&architecture=arm64
 ELECTRON_URL = https://github.com/electron/electron/releases/download/v$(ELECTRON_VERSION)/electron-v$(ELECTRON_VERSION)-linux-x64.zip

@@ -51,12 +51,12 @@ const patches = [
   },
   {
     name: 'window-all-closed: keep daemon/tray alive on Linux like macOS',
-    // BEFORE: process.platform!=="darwin"&&z.app.quit()
-    // AFTER:  process.platform==="win32"&&z.app.quit()
+    // BEFORE: process.platform!=="darwin"&&fe.app.quit()
+    // AFTER:  process.platform==="win32"&&fe.app.quit()
     // On macOS, closing all windows keeps the app running (tray/daemon).
     // Linux should behave the same way. Only Windows should quit.
-    find: 'process.platform!=="darwin"&&z.app.quit()',
-    replace: 'process.platform==="win32"&&z.app.quit()',
+    find: 'process.platform!=="darwin"&&fe.app.quit()',
+    replace: 'process.platform==="win32"&&fe.app.quit()',
     count: 1,
   },
   {
@@ -73,10 +73,10 @@ const patches = [
     // Electron 39 isPackaged detection is unreliable on Linux even with
     // renamed binary and standard resources/ layout. Remove the entire
     // ternary and always load from file.
-    // BEFORE: z.app.isPackaged?Tt.loadFile(...):(Tt.loadURL("http://localhost:5173"),Tt.webContents.openDevTools())
-    // AFTER:  Tt.loadFile(...)
-    find: 'z.app.isPackaged?Tt.loadFile(Ve.join(__dirname,"..","renderer","main_window","index.html")):(Tt.loadURL("http://localhost:5173"),Tt.webContents.openDevTools())',
-    replace: 'Tt.loadFile(Ve.join(__dirname,"..","renderer","main_window","index.html"))',
+    // BEFORE: fe.app.isPackaged?$t.loadFile(...):($t.loadURL("http://localhost:5173"),$t.webContents.openDevTools())
+    // AFTER:  $t.loadFile(...)
+    find: 'fe.app.isPackaged?$t.loadFile(xe.join(__dirname,"..","renderer","main_window","index.html")):($t.loadURL("http://localhost:5173"),$t.webContents.openDevTools())',
+    replace: '$t.loadFile(xe.join(__dirname,"..","renderer","main_window","index.html"))',
     count: 1,
   },
 ];
@@ -112,9 +112,21 @@ function patch() {
 
     content = content.replace(patch.find, patch.replace);
     totalReplacements++;
-    
+
     const after = content.split(patch.find).length - 1;
-    console.log(`OK [${patch.name}]: Replaced ${before - after} occurrence(s).`);
+    const replaced = before - after;
+    // Some replacements contain the original pattern as a substring
+    // (e.g. adding "&&process.platform!==\"linux\"" to an existing condition).
+    // In those cases, verify by checking the new string appears.
+    if (replaced === 0 && patch.replace !== patch.find) {
+      if (content.includes(patch.replace)) {
+        console.log(`OK [${patch.name}]: Replaced (verified by new pattern presence).`);
+      } else {
+        console.warn(`WARNING [${patch.name}]: Replacement may not have been applied.`);
+      }
+    } else {
+      console.log(`OK [${patch.name}]: Replaced ${replaced} occurrence(s).`);
+    }
   }
 
   if (content.length !== originalSize && totalReplacements > 0) {

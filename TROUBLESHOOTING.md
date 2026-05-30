@@ -1,7 +1,7 @@
 # Troubleshooting Log — Factory Desktop Linux Port
 
 > Records every issue encountered during porting, root cause, and resolution.
-> Last updated: 2026-05-14
+> Last updated: 2026-05-30
 
 ## Issue 1: App icon appears but doesn't launch
 
@@ -180,3 +180,31 @@ require("./index-XXXXXXXX.js");
 The scripts extract the hash from this require statement. This makes the port resilient to Vite hash changes across releases.
 
 **Note:** If Factory significantly restructures the JS bundle between releases, individual patch patterns may still need updating. The scripts fail-soft (warn but don't crash) when a pattern isn't found.
+
+---
+
+## Issue 7: Variable renames break patches (v0.82.1 → v0.94.1)
+
+**Symptom:** `make patch` reports "Pattern not found" for patches 2 and 4 (window-all-closed and renderer).
+
+**Root cause:** Upstream Factory Desktop changed internal variable names in their minified JS bundle between releases. Vite's minifier uses short variable names (`z`, `Tt`, `Ve`, etc.) which are not stable across builds. The new release assigned different names.
+
+**Renames identified:**
+
+| Old name (v0.82) | New name (v0.94) | Context |
+|---|---|---|
+| `z.app` | `fe.app` | Electron app reference |
+| `Tt` | `$t` | BrowserWindow instance |
+| `Ve` | `xe` | Path module alias |
+
+**Fix:** Update both `scripts/patch.js` and `scripts/check-patches.py` to use the new variable names. Run `rm -rf app-unpacked && make extract && make patch` to re-apply against a fresh extraction.
+
+**Pattern updates:**
+- Patch 2: `process.platform!=="darwin"&&z.app.quit()` → `process.platform!=="darwin"&&fe.app.quit()`
+- Patch 4: `z.app.isPackaged?Tt.loadFile(Ve.join(...)...` → `fe.app.isPackaged?$t.loadFile(xe.join(...)...`
+- Check 2: `z.app.quit()` → `fe.app.quit()`
+- Check 4: `Tt.loadFile(Ve.join(...)` → `$t.loadFile(xe.join(...)`
+
+**Also fixed:** The auto-updater patch (Patch 1) verification was showing "Replaced 0 occurrence(s)" even though the patch worked. This was because the replacement string contains the original pattern as a substring (adding `&&process.platform!=="linux"` to the existing condition). Verification now checks for the new string presence instead of counting remaining matches.
+
+**Key lesson:** Vite-shortened variable names are NOT stable across releases. The patching approach is fundamentally sound — we search for the business logic pattern (e.g., `process.platform!=="darwin"&&X.app.quit()` where `X` is some minified variable). But when the whole variable prefix changes (entire `Tt` object renamed to `$t`), we need to inspect the bundle and update our search strings. The fix is mechanical: find the old semantics in the new bundle, copy the exact byte sequence, and update the scripts.

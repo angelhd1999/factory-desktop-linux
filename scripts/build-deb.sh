@@ -63,8 +63,23 @@ mkdir -p "${PACKAGE_DIR}/opt/${PACKAGE_NAME}/resources/bin"
 cat > "${PACKAGE_DIR}/opt/${PACKAGE_NAME}/resources/bin/droid" << 'WRAPPER'
 #!/usr/bin/env bash
 # Factory Desktop Linux — droid wrapper
-# Calls the system-installed droid CLI (from https://app.factory.ai/cli)
-exec droid "$@"
+# Calls the system-installed droid CLI, filtering flags not supported
+# by the local droid version.
+set -euo pipefail
+
+args=()
+for arg in "$@"; do
+    case "$arg" in
+        --enable-code-server)
+            # Flag removed from droid CLI; safe to drop
+            ;;
+        *)
+            args+=("$arg")
+            ;;
+    esac
+done
+
+exec droid "${args[@]}"
 WRAPPER
 chmod 755 "${PACKAGE_DIR}/opt/${PACKAGE_NAME}/resources/bin/droid"
 

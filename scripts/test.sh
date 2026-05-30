@@ -96,7 +96,7 @@ echo "--- Dev-mode removal ---"
 
 if [ -n "${BUNDLE:-}" ]; then
     BUNDLE_FILE="$PROJECT_DIR/app-unpacked/.vite/build/$BUNDLE"
-    if grep -q 'Tt.loadURL.*localhost:5173' "$BUNDLE_FILE" 2>/dev/null; then
+    if grep -q '\$t.loadURL.*localhost:5173' "$BUNDLE_FILE" 2>/dev/null; then
         red "  FAIL: Dev-mode loadURL(5173) still present"
         ((FAIL++))
     else
@@ -104,7 +104,7 @@ if [ -n "${BUNDLE:-}" ]; then
         ((PASS++))
     fi
 
-    if grep -q 'Tt.webContents.openDevTools()' "$BUNDLE_FILE"; then
+    if grep -q '\$t.webContents.openDevTools()' "$BUNDLE_FILE"; then
         red "  FAIL: openDevTools() still present"
         ((FAIL++))
     else
@@ -152,8 +152,8 @@ assert "Launcher sets production env" grep -q 'FACTORY_RELEASE_CHANNEL=productio
 
 echo "--- No macOS cruft ---"
 
-assert "!" "No macOS electron in DEB" echo "$DEB_LISTING" | grep -q 'opt/factory-desktop/electron$'
-assert "!" "DEB has no Mach-O files"  echo "$DEB_LISTING" | grep -q 'Mach-O'
+assert "No macOS electron in DEB" test -z "$(echo "$DEB_LISTING" | grep 'opt/factory-desktop/electron$')"
+assert "DEB has no Mach-O files"  test -z "$(echo "$DEB_LISTING" | grep 'Mach-O')"
 
 # ── Clean up test deb ──────────────────────────────────────────────
 

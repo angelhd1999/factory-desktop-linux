@@ -72,7 +72,7 @@ Already correct — the code uses `process.platform==="darwin"` for native menu 
 Factory-arm64.dmg (187 MB)
 └── Factory.app/
     └── Contents/
-        ├── Info.plist              → CFBundleIdentifier: com.electron.factory, version 0.82.0
+        ├── Info.plist              → CFBundleIdentifier: com.electron.factory, version 0.94.1
         ├── MacOS/factory-desktop   → macOS Electron 39.2.7 binary (replaced)
         ├── Frameworks/             → Electron helper apps (replaced)
         └── Resources/
@@ -221,10 +221,10 @@ curl -L -o build/electron.zip \
 unzip -q build/electron.zip -d build/electron
 
 # 8. Package as .deb
-bash scripts/build-deb.sh 0.82.0
+bash scripts/build-deb.sh 0.94.1
 
 # 9. Install
-sudo dpkg -i dist/factory-desktop_0.82.0_amd64.deb
+sudo dpkg -i dist/factory-desktop_0.94.1_amd64.deb
 
 # 10. Launch
 factory-desktop
@@ -278,6 +278,66 @@ It checks `https://api.factory.ai/api/desktop/latest-version`, downloads the new
 ```bash
 # crontab -e
 0 3 * * * factory-desktop-update
+```
+
+### Manual update (when auto-update fails)
+
+If `factory-desktop-update` fails (e.g., because patch patterns changed in the new upstream release), follow this process:
+
+**Step 1 — Check what version you're on and what's available:**
+
+```bash
+cat .current-version                                       # e.g. 0.82.1
+curl -s https://api.factory.ai/api/desktop/latest-version  # e.g. {"latestVersion":"0.94.1"}
+```
+
+**Step 2 — Update the Makefile version, clean, and download:**
+
+```bash
+# Edit Makefile: VERSION ?= <new-version>
+make clean-all
+make download
+```
+
+**Step 3 — Extract and run patches, watch for failures:**
+
+```bash
+make extract
+make patch
+```
+
+If any patches show `WARNING: Pattern not found`, upstream variable names have changed:
+- Open `app-unpacked/.vite/build/main.js` to find the hashed bundle filename
+- Search the bundle for the missing patterns (using `rg` or grep)
+- Compare the old strings in `scripts/patch.js` with what's actually in the new bundle
+- Update the `find` and `replace` strings in `scripts/patch.js`
+- Update the corresponding checks in `scripts/check-patches.py`
+- Re-run `rm -rf app-unpacked && make extract && make patch`
+
+**Common upstream renames seen so far:**
+
+| Old (≤0.82) | New (≥0.94) |
+|---|---|
+| `z.app.quit()` | `fe.app.quit()` |
+| `Tt.loadFile` | `$t.loadFile` |
+| `Ve.join` | `xe.join` |
+| `z.app.isPackaged` | `fe.app.isPackaged` |
+
+**Step 4 — Verify, build, install:**
+
+```bash
+make check          # Should show 4 PASS
+make asar electron assemble package
+sudo dpkg -i dist/factory-desktop_<version>_amd64.deb
+echo "<version>" > .current-version
+```
+
+**Step 5 — Commit your changes to the repo:**
+
+```bash
+git add -A
+git commit -m "Update to v<version>: refresh patch patterns for upstream rename"
+git tag v<version>
 ```
 
 ## Legal
