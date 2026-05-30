@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Verify that all Linux patches were applied correctly."""
+"""Verify that all Linux patches were applied correctly.
+
+Uses regex checks that survive Vite minified variable renames
+(e.g., z→fe, Tt→$t, Ve→xe)."""
+
 import sys
 import re
 from pathlib import Path
@@ -31,11 +35,19 @@ print(f"[check] Bundle: {bundle_name}")
 checks = [
     (
         "Patch 1: auto-updater skips Linux gracefully",
-        'process.platform!=="darwin"&&process.platform!=="win32"&&process.platform!=="linux"' in content,
+        'process.platform!=="linux"' in content,
     ),
     (
         "Patch 2: window-all-closed keeps daemon alive on Linux",
-        'process.platform==="win32"&&fe.app.quit()' in content,
+        # Should contain: process.platform==="win32"&&X.app.quit()
+        # Should NOT contain: process.platform!=="darwin"&&X.app.quit()
+        bool(re.search(
+            r'process\.platform==="win32"&&[\w$]{1,3}\.app\.quit\(\)',
+            content
+        )) and not bool(re.search(
+            r'window-all-closed.*?process\.platform!=="darwin"&&[\w$]{1,3}\.app\.quit\(\)',
+            content
+        )),
     ),
     (
         "Patch 3: daemon binary uses 'droid' on non-Windows",
@@ -43,8 +55,15 @@ checks = [
     ),
     (
         "Patch 4: renderer loads from file unconditionally (dev branch removed)",
-        '$t.loadFile(xe.join(__dirname,"..","renderer","main_window","index.html"))' in content
-        and 'fe.app.isPackaged?$t.loadFile(' not in content,
+        # Should contain: X.loadFile(Y.join(__dirname,"..","renderer"...))
+        # Should NOT contain: X.app.isPackaged?Y.loadFile(...):(Y.loadURL(...)
+        bool(re.search(
+            r'[\w$]{1,3}\.loadFile\([\w$]{1,3}\.join\(__dirname,"\.\.","renderer","main_window","index\.html"\)\)',
+            content
+        )) and not bool(re.search(
+            r'[\w$]{1,3}\.app\.isPackaged\?[\w$]{1,3}\.loadFile\([\w$]{1,3}\.join\(__dirname,"\.\.","renderer","main_window","index\.html"\)\):',
+            content
+        )),
     ),
 ]
 

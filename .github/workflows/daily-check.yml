@@ -1,0 +1,156 @@
+name: Daily Version Check & Auto-Release
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # daily at 6 AM UTC
+  workflow_dispatch:       # manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  check-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Fetch latest Factory version
+        id: version
+        run: |
+          LATEST=$(curl -sfL https://api.factory.ai/api/desktop/latest-version | python3 -c "import sys,json; print(json.load(sys.stdin)['latestVersion'])")
+          echo "LATEST=$LATEST"
+          echo "LATEST=$LATEST" >> "$GITHUB_OUTPUT"
+
+          # Check if we already have a tag for this version
+          if git rev-parse "v$LATEST" >/dev/null 2>&1; then
+            echo "Already released v$LATEST — nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "New version v$LATEST detected!"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.version.outputs.skip != 'true'
+        with:
+          node-version: '20'
+
+      - name: Install build dependencies
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq p7zip-full dpkg-dev fakeroot rpm zstd libarchive-tools alien
+          npm install @electron/asar
+
+      - name: Download Factory DMG
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          curl -sfL -o Factory-arm64.dmg \
+            "https://app.factory.ai/api/desktop?platform=darwin&architecture=arm64" \
+            -w "\nHTTP %{http_code} | %{size_download} bytes"
+
+      - name: Extract and patch
+        if: steps.version.outputs.skip != 'true'
+        id: patch
+        run: |
+          make extract
+          make patch 2>&1 | tee /tmp/patch-output.txt
+          python3 scripts/check-patches.py 2>&1 | tee /tmp/check-output.txt
+
+          # Detect if any patches failed
+          if grep -q 'WARNING.*not found' /tmp/patch-output.txt; then
+            echo "patches_failed=true" >> "$GITHUB_OUTPUT"
+            grep 'WARNING.*not found' /tmp/patch-output.txt > /tmp/failed-patches.txt
+          else
+            echo "patches_failed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Auto-fix patches with Qwen (if patterns broke)
+        if: steps.patch.outputs.patches_failed == 'true'
+        env:
+          QWEN_API_KEY: ${{ secrets.NANBUILDERS_API_KEY }}
+        run: |
+          echo "⚠️  Patches failed — attempting auto-repair with Qwen..."
+          cat /tmp/failed-patches.txt
+
+          BUNDLE_FILE=$(ls app-unpacked/.vite/build/index-*.js | head -1)
+          echo "Bundle: $BUNDLE_FILE"
+
+          # Extract context around each failed patch area for Qwen analysis
+          python3 scripts/auto-fix-patches.py \
+            --bundle "$BUNDLE_FILE" \
+            --failed /tmp/failed-patches.txt \
+            --api-key "$QWEN_API_KEY"
+
+          # Re-try patching with the repaired patterns
+          rm -rf app-unpacked
+          make extract
+          make patch
+          python3 scripts/check-patches.py
+
+          # If still failing, stop (needs manual intervention)
+          if ! python3 scripts/check-patches.py; then
+            echo "❌ Auto-fix failed — manual intervention required"
+            exit 1
+          fi
+
+          echo "✅ Patches auto-repaired successfully"
+
+      - name: Repack asar and download Electron
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          make asar
+          make electron
+
+      - name: Package .deb
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          bash scripts/build-deb.sh ${{ steps.version.outputs.LATEST }}
+          echo "DEB_FILE=$(ls dist/*.deb)" >> "$GITHUB_OUTPUT"
+
+      - name: Package .rpm
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          sudo alien -r dist/*.deb --scripts
+          mv *.rpm dist/ 2>/dev/null || true
+
+      - name: Package .pkg.tar.zst (experimental)
+        if: steps.version.outputs.skip != 'true'
+        continue-on-error: true
+        run: |
+          bash scripts/build-pacman.sh ${{ steps.version.outputs.LATEST }} || \
+            echo "::warning::Arch packaging failed — build script needs manual setup"
+
+      - name: Update version and tag
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          echo "${{ steps.version.outputs.LATEST }}" > .current-version
+          sed -i "s/VERSION ?= .*/VERSION ?= ${{ steps.version.outputs.LATEST }}/" Makefile
+
+          git config user.name "factory-droid[bot]"
+          git config user.email "138933559+factory-droid[bot]@users.noreply.github.com"
+
+          # Stage any auto-fix changes + version bump
+          git add -A
+          git diff --cached --quiet || git commit -m "Release v${{ steps.version.outputs.LATEST }} (auto)
+
+      Co-authored-by: factory-droid[bot] <138933559+factory-droid[bot]@users.noreply.github.com>"
+
+          git tag -a "v${{ steps.version.outputs.LATEST }}" -m "Auto-release v${{ steps.version.outputs.LATEST }}"
+          git push origin main
+          git push origin "v${{ steps.version.outputs.LATEST }}"
+
+      - name: Create GitHub Release
+        if: steps.version.outputs.skip != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.LATEST }}
+          name: v${{ steps.version.outputs.LATEST }}
+          files: |
+            dist/*.deb
+            dist/*.rpm
+            dist/*.pkg.tar.zst
+          generate_release_notes: true

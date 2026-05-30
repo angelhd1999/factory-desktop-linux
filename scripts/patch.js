@@ -4,7 +4,13 @@
  *
  * Applies targeted replacements in the minified Vite bundle.
  * Auto-detects the hashed bundle filename (changes per release).
- * All patches are regex-based and fail-soft.
+ *
+ * Supports two match modes:
+ *   - 'exact': string match (for patterns with no variable names)
+ *   - 'regex': regex match with capturing groups (survives Vite renames)
+ *
+ * Regex patterns use \w{1,3} or [\w$]{1,3} for minified variable names
+ * that may change across builds (e.g., z→fe, Tt→$t, Ve→xe).
  */
 
 const fs = require('fs');
@@ -38,48 +44,89 @@ if (!fs.existsSync(BUNDLE_PATH)) {
 
 console.log(`[patch] Detected bundle: ${BUNDLE_FILENAME}`);
 
+// ── Patch definitions ──────────────────────────────────────────────
+
 const patches = [
   {
     name: 'auto-updater: allow linux platform (skip gracefully)',
-    // BEFORE: process.platform!=="darwin"&&process.platform!=="win32"
-    // AFTER:  process.platform!=="darwin"&&process.platform!=="win32"&&process.platform!=="linux"
-    // This keeps the updater skipped on Linux since Squirrel doesn't support it.
+    type: 'exact',
     find: 'process.platform!=="darwin"&&process.platform!=="win32"',
     replace: 'process.platform!=="darwin"&&process.platform!=="win32"&&process.platform!=="linux"',
-    // Only replace the FIRST occurrence (the updater gate)
-    count: 1,
   },
   {
     name: 'window-all-closed: keep daemon/tray alive on Linux like macOS',
-    // BEFORE: process.platform!=="darwin"&&fe.app.quit()
-    // AFTER:  process.platform==="win32"&&fe.app.quit()
-    // On macOS, closing all windows keeps the app running (tray/daemon).
-    // Linux should behave the same way. Only Windows should quit.
-    find: 'process.platform!=="darwin"&&fe.app.quit()',
-    replace: 'process.platform==="win32"&&fe.app.quit()',
-    count: 1,
+    type: 'regex',
+    find: /process\.platform!=="darwin"&&([\w$]{1,3})\.app\.quit\(\)/,
+    replace: 'process.platform==="win32"&&$1.app.quit()',
   },
   {
     name: 'daemon: use "droid" binary name on linux (already correct, verify)',
-    // This patch is a no-op verification — the code already uses "droid"
-    // for non-Windows. We check that it exists in the bundle.
+    type: 'exact',
     find: 'process.platform==="win32"?"droid.exe":"droid"',
     replace: 'process.platform==="win32"?"droid.exe":"droid"',
-    count: 1,
     verifyOnly: true,
   },
   {
     name: 'renderer: force packaged file path (remove dev-mode branch)',
-    // Electron 39 isPackaged detection is unreliable on Linux even with
-    // renamed binary and standard resources/ layout. Remove the entire
-    // ternary and always load from file.
-    // BEFORE: fe.app.isPackaged?$t.loadFile(...):($t.loadURL("http://localhost:5173"),$t.webContents.openDevTools())
-    // AFTER:  $t.loadFile(...)
-    find: 'fe.app.isPackaged?$t.loadFile(xe.join(__dirname,"..","renderer","main_window","index.html")):($t.loadURL("http://localhost:5173"),$t.webContents.openDevTools())',
-    replace: '$t.loadFile(xe.join(__dirname,"..","renderer","main_window","index.html"))',
-    count: 1,
+    type: 'regex',
+    find: /([\w$]{1,3})\.app\.isPackaged\?([\w$]{1,3})\.loadFile\(([\w$]{1,3})\.join\(__dirname,"\.\.","renderer","main_window","index\.html"\)\):\(\2\.loadURL\("http:\/\/localhost:5173"\),\2\.webContents\.openDevTools\(\)\)/,
+    replace: '$2.loadFile($3.join(__dirname,"..","renderer","main_window","index.html"))',
   },
 ];
+
+// ── Patch engine ───────────────────────────────────────────────────
+
+function countMatches(str, find) {
+  if (find instanceof RegExp) {
+    // Create a copy with global flag for counting
+    const gFlag = new RegExp(find.source, find.flags.includes('g') ? find.flags : find.flags + 'g');
+    return (str.match(gFlag) || []).length;
+  }
+  return str.split(find).length - 1;
+}
+
+function applyPatch(content, patch) {
+  if (patch.verifyOnly) {
+    const count = countMatches(content, patch.find);
+    if (count > 0) {
+      console.log(`OK [${patch.name}]: Pattern found ${count} time(s) — already correct for Linux.`);
+      return { content, applied: true };
+    }
+    console.warn(`WARNING [${patch.name}]: Pattern not found — daemon binary path may be broken.`);
+    console.warn(`  Looking for: ${patch.find}`);
+    return { content, applied: false };
+  }
+
+  if (patch.type === 'regex') {
+    const m = content.match(patch.find);
+    if (!m) {
+      console.warn(`WARNING [${patch.name}]: Regex pattern not found in bundle.`);
+      console.warn(`  Regex: ${patch.find}`);
+      return { content, applied: false };
+    }
+    console.log(`OK [${patch.name}]: Matched groups: ${JSON.stringify(m.slice(1))}`);
+    content = content.replace(patch.find, patch.replace);
+    return { content, applied: true };
+  }
+
+  // Exact string match
+  const before = countMatches(content, patch.find);
+  if (before === 0) {
+    console.warn(`WARNING [${patch.name}]: Pattern not found in bundle.`);
+    console.warn(`  Looking for: ${patch.find.substring(0, 80)}...`);
+    return { content, applied: false };
+  }
+
+  // Guard: if replacement already present, skip
+  if (content.includes(patch.replace)) {
+    console.log(`OK [${patch.name}]: Already patched (replacement already present).`);
+    return { content, applied: false };
+  }
+
+  content = content.replace(patch.find, patch.replace);
+  console.log(`OK [${patch.name}]: Replaced 1 occurrence.`);
+  return { content, applied: true };
+}
 
 function patch() {
   if (!fs.existsSync(BUNDLE_PATH)) {
@@ -90,52 +137,22 @@ function patch() {
 
   let content = fs.readFileSync(BUNDLE_PATH, 'utf-8');
   const originalSize = content.length;
-  let totalReplacements = 0;
+  let appliedCount = 0;
 
-  for (const patch of patches) {
-    const before = content.split(patch.find).length - 1;
-    
-    if (before === 0) {
-      console.warn(`WARNING [${patch.name}]: Pattern not found in bundle.`);
-      console.warn(`  Looking for: ${patch.find.substring(0, 80)}...`);
-      continue;
-    }
-
-    if (patch.verifyOnly) {
-      console.log(`OK [${patch.name}]: Pattern found ${before} time(s) — already correct for Linux.`);
-      continue;
-    }
-
-    if (before < patch.count) {
-      console.warn(`WARNING [${patch.name}]: Expected ${patch.count} match(es), found ${before}.`);
-    }
-
-    content = content.replace(patch.find, patch.replace);
-    totalReplacements++;
-
-    const after = content.split(patch.find).length - 1;
-    const replaced = before - after;
-    // Some replacements contain the original pattern as a substring
-    // (e.g. adding "&&process.platform!==\"linux\"" to an existing condition).
-    // In those cases, verify by checking the new string appears.
-    if (replaced === 0 && patch.replace !== patch.find) {
-      if (content.includes(patch.replace)) {
-        console.log(`OK [${patch.name}]: Replaced (verified by new pattern presence).`);
-      } else {
-        console.warn(`WARNING [${patch.name}]: Replacement may not have been applied.`);
-      }
-    } else {
-      console.log(`OK [${patch.name}]: Replaced ${replaced} occurrence(s).`);
-    }
+  for (const patchDef of patches) {
+    const result = applyPatch(content, patchDef);
+    content = result.content;
+    if (result.applied) appliedCount++;
   }
 
-  if (content.length !== originalSize && totalReplacements > 0) {
-    console.warn(`WARNING: Bundle size changed from ${originalSize} to ${content.length} bytes.`);
-    console.warn('This may indicate a patching issue — replacements should preserve size.');
+  if (content.length !== originalSize) {
+    const diff = content.length - originalSize;
+    const sign = diff > 0 ? '+' : '';
+    console.log(`[patch] Bundle size: ${originalSize} → ${content.length} (${sign}${diff} bytes)`);
   }
 
   fs.writeFileSync(BUNDLE_PATH, content, 'utf-8');
-  console.log(`\nPatched ${totalReplacements} pattern(s). Bundle written to ${BUNDLE_PATH}`);
+  console.log(`\nApplied ${appliedCount}/${patches.length} patch(es). Bundle: ${BUNDLE_PATH}`);
 }
 
 patch();
