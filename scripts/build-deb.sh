@@ -131,6 +131,29 @@ Description: Factory Desktop — AI-powered development agent
  Homepage: https://github.com/YOUR_USER/factory-desktop-linux
 CONTROL
 
+# ── DEBIAN maintainer scripts ───────────────────────────────────────
+
+# prerm: stop running app before upgrade/remove
+cat > "${PACKAGE_DIR}/DEBIAN/prerm" << 'PRERM'
+#!/bin/sh
+set -e
+
+# Gracefully stop any running Factory Desktop instance
+BIN="/opt/factory-desktop/factory-desktop-bin"
+if command -v killall >/dev/null 2>&1; then
+    killall -q -TERM factory-desktop-bin 2>/dev/null || true
+    # Wait up to 5 seconds for graceful shutdown
+    for i in $(seq 1 50); do
+        killall -0 factory-desktop-bin 2>/dev/null || break
+        sleep 0.1
+    done
+    # Force kill if still running
+    killall -q -KILL factory-desktop-bin 2>/dev/null || true
+fi
+exit 0
+PRERM
+chmod 755 "${PACKAGE_DIR}/DEBIAN/prerm"
+
 # ── Build the .deb ──────────────────────────────────────────────────
 
 echo "[build-deb] Building ${DEB_NAME}.deb..."

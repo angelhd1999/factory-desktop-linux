@@ -82,6 +82,17 @@ echo ""
 echo -e "${YELLOW}Updating from v$CURRENT to v$LATEST...${NC}"
 echo ""
 
+# ── Stop running instance ───────────────────────────────────────────
+
+echo "[0/4] Stopping running Factory Desktop..."
+killall -q -TERM factory-desktop-bin 2>/dev/null || true
+for i in $(seq 1 50); do
+    killall -0 factory-desktop-bin 2>/dev/null || break
+    sleep 0.1
+done
+killall -q -KILL factory-desktop-bin 2>/dev/null || true
+echo "  Stopped."
+
 # ── Rebuild ─────────────────────────────────────────────────────────
 
 mkdir -p "$CACHE_DIR"
