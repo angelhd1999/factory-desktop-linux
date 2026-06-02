@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Factory Desktop update check
+RefuseManualStart=no
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=1800
+
+[Install]
+WantedBy=timers.target

@@ -91,6 +91,15 @@ chmod 755 "${PACKAGE_DIR}/opt/${PACKAGE_NAME}/factory-desktop"
 cp "${SCRIPT_DIR}/update.sh" "${PACKAGE_DIR}/opt/${PACKAGE_NAME}/factory-desktop-update"
 chmod 755 "${PACKAGE_DIR}/opt/${PACKAGE_NAME}/factory-desktop-update"
 
+# Update check helper (daily systemd timer)
+cp "${SCRIPT_DIR}/factory-desktop-update-check.sh" "${PACKAGE_DIR}/opt/${PACKAGE_NAME}/factory-desktop-update-check"
+chmod 755 "${PACKAGE_DIR}/opt/${PACKAGE_NAME}/factory-desktop-update-check"
+
+# Systemd user service and timer
+mkdir -p "${PACKAGE_DIR}/usr/lib/systemd/user"
+cp "${SCRIPT_DIR}/factory-desktop-update-check.service" "${PACKAGE_DIR}/usr/lib/systemd/user/"
+cp "${SCRIPT_DIR}/factory-desktop-update-check.timer" "${PACKAGE_DIR}/usr/lib/systemd/user/"
+
 # ── Create symlinks in /usr/bin ─────────────────────────────────────
 
 ln -sf "/opt/${PACKAGE_NAME}/factory-desktop" "${PACKAGE_DIR}/usr/bin/${PACKAGE_NAME}"
@@ -153,6 +162,26 @@ fi
 exit 0
 PRERM
 chmod 755 "${PACKAGE_DIR}/DEBIAN/prerm"
+
+# postinst: enable automatic update checks
+cat > "${PACKAGE_DIR}/DEBIAN/postinst" << 'POSTINST'
+#!/bin/sh
+set -e
+
+# Enable the daily update check timer for the installing user
+if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ]; then
+    su "${SUDO_USER}" -c "systemctl --user enable --now factory-desktop-update-check.timer" 2>/dev/null || true
+fi
+
+# Also print a message so users who install without sudo know
+echo ""
+echo "Factory Desktop update check timer installed."
+echo "Enable it with: systemctl --user enable --now factory-desktop-update-check.timer"
+echo ""
+
+exit 0
+POSTINST
+chmod 755 "${PACKAGE_DIR}/DEBIAN/postinst"
 
 # ── Build the .deb ──────────────────────────────────────────────────
 

@@ -1,0 +1,10 @@
+[Unit]
+Description=Check for Factory Desktop updates
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/factory-desktop/factory-desktop-update-check
+StandardOutput=journal
+StandardError=journal
