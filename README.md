@@ -13,12 +13,13 @@ Run [Factory Desktop](https://factory.ai/product/desktop) on Linux. The official
 - Packages everything into a `.deb`/`.rpm` for easy install
 
 **What it does NOT do:**
-- Does **not** redistribute Factory's software — you download it yourself from Factory's servers
-- Does **not** modify Factory's business logic, auth, or data handling
+- Does **not** modify Factory's business logic, auth, or data handling — only 4 platform-gating checks are patched
 - Does **not** bundle any native modules — Factory Desktop has zero native `.node` dependencies
 - Does **not** require rebuilding anything — the app.asar JavaScript is platform-agnostic by design
 
-**In short:** factory-desktop-linux is a set of build scripts (MIT licensed). The app you run is Factory's own code, downloaded from Factory's own servers.
+**What about the .deb packages?** They contain Factory's `app.asar` (JavaScript application code) extracted from the publicly available macOS DMG. The same code anyone can download from `https://app.factory.ai`. Factory's trademarks, branding, and software remain property of The San Francisco AI Factory, Inc. Users must accept Factory's [Terms of Service](https://factory.ai/terms). This is an unofficial community project — not affiliated with or endorsed by Factory.
+
+**In short:** factory-desktop-linux is a set of build scripts (MIT licensed). The app you run is Factory's own code. If you prefer to build it yourself from Factory's servers directly, see [TECH.md](TECH.md).
 
 ## Install
 
@@ -76,13 +77,13 @@ rm -rf ~/.config/Factory/
 
 ## Legal
 
-This project is an **independent community port** — not affiliated with Factory.
+This is an **unofficial community project** — not affiliated with or endorsed by Factory.
 
-- **We do NOT redistribute any Factory software.** The macOS DMG is downloaded directly from Factory's servers by the user.
-- **We do NOT redistribute any Electron software.** The Linux Electron binary is downloaded directly from GitHub releases by the user.
-- **Users must accept Factory's own terms of service and EULA** when using the application.
-- **Factory's trademarks, branding, and software remain property of The San Francisco AI Factory, Inc.**
-- This repository itself contains only build scripts, Linux compatibility patches, and packaging tooling — all under the MIT license.
+- The `.deb`/`.rpm` packages contain Factory's JavaScript application code (`app.asar`) extracted from the publicly available macOS DMG at `https://app.factory.ai`. The same code anyone can download directly.
+- Factory's trademarks, branding, and software remain property of **The San Francisco AI Factory, Inc.**
+- Users must accept Factory's [Terms of Service](https://factory.ai/terms) when using the application.
+- The Electron binary is redistributed under Electron's MIT license.
+- This repository's build scripts, patches, and packaging tooling are MIT licensed.
 
 For questions or issues, [open an issue](https://github.com/angelhd1999/factory-desktop-linux/issues).
 
