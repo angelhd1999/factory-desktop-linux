@@ -17,7 +17,7 @@ Run [Factory Desktop](https://factory.ai/product/desktop) on Linux. The official
 - Does **not** bundle any native modules — Factory Desktop has zero native `.node` dependencies
 - Does **not** require rebuilding anything — the app.asar JavaScript is platform-agnostic by design
 
-**What about the .deb packages?** They contain Factory's `app.asar` (JavaScript application code) extracted from the publicly available macOS DMG. The same code anyone can download from `https://app.factory.ai`. Factory's trademarks, branding, and software remain property of The San Francisco AI Factory, Inc. Users must accept Factory's [Terms of Service](https://factory.ai/terms). This is an unofficial community project — not affiliated with or endorsed by Factory.
+**What about the pre-built packages?** They contain Factory's `app.asar` (JavaScript application code) extracted from the publicly available macOS DMG. The same code anyone can download from `https://app.factory.ai`. Factory's trademarks, branding, and software remain property of The San Francisco AI Factory, Inc. Users must accept Factory's [Terms of Service](https://factory.ai/terms). This is an unofficial community project — not affiliated with or endorsed by Factory.
 
 **In short:** factory-desktop-linux is a set of build scripts (MIT licensed). The app you run is Factory's own code. If you prefer to build it yourself from Factory's servers directly, see [TECH.md](TECH.md).
 

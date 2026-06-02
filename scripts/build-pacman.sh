@@ -5,7 +5,7 @@
 # Usage: bash scripts/build-pacman.sh [version]
 #   version: defaults to what's in .current-version, or "0.0.0"
 #
-# Requires: GNU coreutils, zstd
+# Requires: GNU coreutils, zstd, libarchive (bsdtar)
 # Output:   dist/factory-desktop-<version>-1-x86_64.pkg.tar.zst
 #
 
@@ -22,21 +22,48 @@ DEST_DIR="$PKG_DIR/opt/factory-desktop"
 echo "[build-pacman] Creating Arch package: $PKG_NAME-$VERSION-1-$ARCH"
 
 rm -rf "$(dirname "$PKG_DIR")"
-mkdir -p "$DEST_DIR"
+mkdir -p "$DEST_DIR/resources"
+mkdir -p "$DEST_DIR/resources/bin"
 
-# ── Copy application files ──────────────────────────────────────────
+# ── Validate build artifacts exist ──────────────────────────────────
 
 BUILD_DIR="$PROJECT_DIR/build"
-cp "$BUILD_DIR/electron/"* "$DEST_DIR/"
+
+if [ ! -f "$BUILD_DIR/app.asar" ]; then
+    echo "ERROR: app.asar not found at $BUILD_DIR/app.asar" >&2
+    echo "Run 'make asar' first." >&2
+    exit 1
+fi
+
+if [ ! -f "$BUILD_DIR/electron/electron" ] && [ ! -f "$BUILD_DIR/electron/factory-desktop-bin" ]; then
+    echo "ERROR: Electron binary not found in $BUILD_DIR/electron/" >&2
+    echo "Run 'make electron' first." >&2
+    exit 1
+fi
+
+# ── Copy Electron runtime ───────────────────────────────────────────
+
+cp -r "$BUILD_DIR/electron/"* "$DEST_DIR/"
 mv "$DEST_DIR/electron" "$DEST_DIR/factory-desktop-bin" 2>/dev/null || true
+rm -f "$DEST_DIR/resources/default_app.asar"
+
+# ── Copy patched app.asar ───────────────────────────────────────────
+
 cp "$BUILD_DIR/app.asar" "$DEST_DIR/resources/"
 
 # ── droid wrapper ───────────────────────────────────────────────────
 
-mkdir -p "$DEST_DIR/resources/bin"
 cat > "$DEST_DIR/resources/bin/droid" << 'DROIDWRAPPER'
 #!/usr/bin/env bash
-exec droid "$@"
+set -euo pipefail
+args=()
+for arg in "$@"; do
+    case "$arg" in
+        --enable-code-server) ;;
+        *) args+=("$arg") ;;
+    esac
+done
+exec droid "${args[@]}"
 DROIDWRAPPER
 chmod 755 "$DEST_DIR/resources/bin/droid"
 
@@ -50,40 +77,55 @@ chmod 755 "$DEST_DIR/factory-desktop"
 cp "$SCRIPT_DIR/update.sh" "$DEST_DIR/factory-desktop-update"
 chmod 755 "$DEST_DIR/factory-desktop-update"
 
+# ── Update check helper ─────────────────────────────────────────────
+
+cp "$SCRIPT_DIR/factory-desktop-update-check.sh" "$DEST_DIR/factory-desktop-update-check"
+chmod 755 "$DEST_DIR/factory-desktop-update-check"
+
 # ── Symlinks ────────────────────────────────────────────────────────
 
 mkdir -p "$PKG_DIR/usr/bin"
 ln -sf /opt/factory-desktop/factory-desktop        "$PKG_DIR/usr/bin/factory-desktop"
 ln -sf /opt/factory-desktop/factory-desktop-update  "$PKG_DIR/usr/bin/factory-desktop-update"
 
+# ── Systemd user timer ──────────────────────────────────────────────
+
+mkdir -p "$PKG_DIR/usr/lib/systemd/user"
+cp "$SCRIPT_DIR/factory-desktop-update-check.service" "$PKG_DIR/usr/lib/systemd/user/"
+cp "$SCRIPT_DIR/factory-desktop-update-check.timer"   "$PKG_DIR/usr/lib/systemd/user/"
+
 # ── Desktop entry ───────────────────────────────────────────────────
 
 mkdir -p "$PKG_DIR/usr/share/applications"
 cat > "$PKG_DIR/usr/share/applications/factory-desktop.desktop" << 'DESKTOP'
 [Desktop Entry]
-Name=Factory Desktop
-Comment=Droid AI coding assistant
-Exec=factory-desktop
+Name=Factory
+Comment=AI-powered development agent
+GenericName=AI Coding Agent
+Exec=/opt/factory-desktop/factory-desktop
+Icon=factory-desktop
 Type=Application
-Categories=Development;
-StartupWMClass=factory-desktop
+Categories=Development;IDE;
+Keywords=AI;agent;coding;droid;factory;
+StartupWMClass=Factory
+Terminal=false
 DESKTOP
 
-# ── Icon ────────────────────────────────────────────────────────────
+# ── Icon (placeholder) ──────────────────────────────────────────────
 
 mkdir -p "$PKG_DIR/usr/share/icons/hicolor/256x256/apps"
 touch "$PKG_DIR/usr/share/icons/hicolor/256x256/apps/factory-desktop.png"
 
 # ── .PKGINFO ───────────────────────────────────────────────────────
 
-mkdir -p "$PKG_DIR/usr/share/doc/factory-desktop"
+mkdir -p "$PKG_DIR/usr/share/doc/$PKG_NAME"
 cat > "$PKG_DIR/.PKGINFO" << PKGINFO
 pkgname = $PKG_NAME
 pkgver = $VERSION-1
-pkgdesc = Factory Desktop — AI coding assistant (community Linux port)
-url = https://github.com/username/factory-desktop-linux
+pkgdesc = Factory Desktop — AI-powered development agent (community Linux port)
+url = https://github.com/angelhd1999/factory-desktop-linux
 arch = $ARCH
-license = MIT
+license = custom:Factory EULA
 depend = bash
 depend = glibc
 depend = libx11
@@ -109,7 +151,8 @@ mkdir -p "$DIST_DIR"
 
 PKG_FILE="$DIST_DIR/$PKG_NAME-$VERSION-1-$ARCH.pkg.tar.zst"
 
-zstd -c -19 <(bsdtar -cf - opt usr .PKGINFO .MTREE) > "$PKG_FILE"
+# Build tar archive and compress with zstd
+bsdtar -cf - opt usr .PKGINFO .MTREE 2>/dev/null | zstd -c -19 -o "$PKG_FILE"
 
 rm -rf "$(dirname "$PKG_DIR")"
 
