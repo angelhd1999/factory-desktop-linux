@@ -53,19 +53,53 @@ sudo pacman -U factory-desktop-*.pkg.tar.zst
 
 ## Update
 
-**Automatic — no action needed.** After install, a systemd timer checks for updates daily and shows a desktop notification when a new version is available:
+To receive desktop notifications when a new version is available, enable the daily update timer:
 
 ```bash
-# Notification appears → run:
+systemctl --user enable --now factory-desktop-update-check.timer
+```
+
+When a notification appears, run:
+
+```bash
 factory-desktop-update
 ```
 
-You can also check manually:
+You can also check and update manually:
 
 ```bash
 factory-desktop-update           # Download latest, rebuild, install
 factory-desktop-update --check   # Check only (don't install)
 factory-desktop-update --force   # Rebuild even if already current
+```
+
+## Troubleshooting
+
+### GPU or rendering issues
+
+The launcher enables GPU acceleration by default. If you experience blank windows, flickering, or crashes, try these opt-in workarounds:
+
+```bash
+# Disable GPU entirely
+FACTORY_DISABLE_GPU=1 factory-desktop
+
+# Disable GPU compositing only
+FACTORY_DISABLE_GPU_COMPOSITING=1 factory-desktop
+
+# Disable GPU sandbox
+FACTORY_DISABLE_GPU_SANDBOX=1 factory-desktop
+
+# Disable Chromium sandbox (last resort, reduces security)
+FACTORY_NO_SANDBOX=1 factory-desktop
+```
+
+### Wayland
+
+Under Wayland, XWayland is used by default for better popup positioning. For pure Wayland:
+
+```bash
+FACTORY_WAYLAND=1 factory-desktop
+```
 ```
 
 Updated `.deb` packages are published automatically when Factory releases a new desktop version — the CI pipeline detects it within 24 hours.

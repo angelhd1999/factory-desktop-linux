@@ -145,8 +145,13 @@ echo "--- Launcher ---"
 LAUNCHER="$PROJECT_DIR/scripts/launcher.sh"
 assert "Launcher exists" [ -f "$LAUNCHER" ]
 assert "Launcher uses readlink -f" grep -q 'readlink -f' "$LAUNCHER"
-assert "Launcher sets ELECTRON_IS_DEV=0" grep -q 'ELECTRON_IS_DEV=0' "$LAUNCHER"
-assert "Launcher sets production env" grep -q 'FACTORY_RELEASE_CHANNEL=production' "$LAUNCHER"
+assert "Launcher sets NODE_ENV=production" grep -q 'NODE_ENV=production' "$LAUNCHER"
+assert "Launcher has GPU opt-in (FACTORY_DISABLE_GPU)" grep -q 'FACTORY_DISABLE_GPU' "$LAUNCHER"
+assert "Launcher has sandbox opt-in (FACTORY_NO_SANDBOX)" grep -q 'FACTORY_NO_SANDBOX' "$LAUNCHER"
+# --no-sandbox should only appear as opt-in, not in exec args
+assert "!" "Launcher does NOT force --no-sandbox" \
+    bash -c "awk '/^exec/{found=1} found' \"$LAUNCHER\" | grep -q '\-\-no-sandbox'"
+assert "!" "Launcher does NOT force ELECTRON_NO_SANDBOX" grep -q 'ELECTRON_NO_SANDBOX=1' "$LAUNCHER"
 
 # ── Test 8: No macOS binary left in package ─────────────────────────
 

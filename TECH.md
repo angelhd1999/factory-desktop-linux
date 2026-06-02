@@ -129,7 +129,7 @@ sudo dpkg -i dist/factory-desktop_*.deb
 | `make electron` | Download Linux Electron 39.2.7 |
 | `make assemble` | Combine Electron + patched asar + droid wrapper |
 | `make package` | Build .deb package |
-| `make install` | Install .deb with dpkg |
+| `make install-deb` | Install .deb with dpkg |
 | `make run` | Launch app from build directory |
 | `make clean` | Remove build artifacts |
 | `make clean-all` | Remove everything including downloads |
@@ -241,7 +241,7 @@ make test
 | Blank window on launch | Missing Electron binary | Run `make electron` |
 | Auth loop / can't sign in | keytar unavailable | Factory falls back to file-based storage automatically — check `~/.config/Factory/` |
 | Daemon fails to start | Droid CLI not installed or incompatible flag | Install droid CLI. The wrapper filters known incompatible flags. |
-| GPU/sandbox errors | Electron sandboxing | Launcher uses `--no-sandbox --disable-gpu-sandbox` by default |
+| GPU/sandbox errors | Electron sandboxing or GPU drivers | Use opt-in workarounds: `FACTORY_DISABLE_GPU=1`, `FACTORY_NO_SANDBOX=1` |
 | Wayland window issues | Electron Ozone platform | Set `FACTORY_WAYLAND=1` for pure Wayland, or use XWayland (default) |
 
 ## Debugging

@@ -10,6 +10,7 @@ env:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   check-and-release:
@@ -44,7 +45,7 @@ jobs:
         if: steps.version.outputs.skip != 'true'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq p7zip-full dpkg-dev fakeroot rpm zstd libarchive-tools alien
+          sudo apt-get install -y -qq p7zip-full dpkg-dev fakeroot rpm zstd libarchive-tools alien xvfb
           npm install @electron/asar
 
       - name: Download Factory DMG
@@ -107,6 +108,30 @@ jobs:
         run: |
           bash scripts/build-deb.sh ${{ steps.version.outputs.LATEST }}
 
+      - name: Smoke test (headless launch)
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          echo "Installing DEB..."
+          sudo dpkg -i dist/factory-desktop_${{ steps.version.outputs.LATEST }}_amd64.deb
+          sudo apt-get install -f -y
+
+          echo "Launching headless smoke test..."
+          timeout 30 xvfb-run --auto-servernum factory-desktop 2>&1 | tee /tmp/smoke-test.log || true
+
+          echo "--- Smoke test output ---"
+          cat /tmp/smoke-test.log
+
+          if grep -q 'Renderer finished loading' /tmp/smoke-test.log && \
+             grep -q 'daemon_ipc_ready' /tmp/smoke-test.log; then
+            echo "SMOKE TEST PASSED: Renderer loaded, daemon connected."
+          else
+            echo "SMOKE TEST FAILED: Missing expected log output."
+            exit 1
+          fi
+
+          echo "Cleaning up..."
+          sudo dpkg -r factory-desktop || true
+
       - name: Package .rpm
         if: steps.version.outputs.skip != 'true'
         run: |
@@ -120,22 +145,41 @@ jobs:
           bash scripts/build-pacman.sh ${{ steps.version.outputs.LATEST }} || \
             echo "::warning::Arch packaging failed"
 
-      - name: Update version and tag
+      - name: Update version and create PR
         if: steps.version.outputs.skip != 'true'
         run: |
           V="${{ steps.version.outputs.LATEST }}"
+          BRANCH="auto-release-v$V"
           echo "$V" > .current-version
-          sed -i "s|VERSION ?= .*|VERSION ?= $V|" Makefile
 
           git config user.name "factory-droid[bot]"
           git config user.email "138933559+factory-droid[bot]@users.noreply.github.com"
 
+          git checkout -b "$BRANCH"
           git add -A
           git diff --cached --quiet || git commit -m "Release v$V (auto)"
 
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "Release v$V (auto)" \
+            --body "Automated release for Factory Desktop v$V. Patches verified, smoke test passed." \
+            --label "autorelease"
+
+          # Auto-merge if smoke test passed
+          gh pr merge "$BRANCH" --auto --squash --delete-branch || \
+            echo "::warning::Auto-merge not available (may require branch protection rule adjustment)"
+
+          # Tag after merge
+          sleep 10
+          git checkout main
+          git pull origin main
           git tag -a "v$V" -m "Auto-release v$V"
-          git push origin main
           git push origin "v$V"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create GitHub Release
         if: steps.version.outputs.skip != 'true'

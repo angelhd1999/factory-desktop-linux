@@ -38,7 +38,34 @@ cp "$BUILD_DIR/app.asar" "$DEST_DIR/resources/"
 mkdir -p "$DEST_DIR/resources/bin"
 cat > "$DEST_DIR/resources/bin/droid" << 'DROIDWRAPPER'
 #!/usr/bin/env bash
-exec droid "$@"
+# Factory Desktop Linux — droid wrapper
+# Calls the system-installed droid CLI, filtering flags not supported
+# by the local droid version. Logs dropped flags for debuggability.
+set -euo pipefail
+
+LOG_DIR="${HOME}/.local/state/factory-desktop"
+mkdir -p "$LOG_DIR"
+DEBUG_LOG="$LOG_DIR/droid-wrapper.log"
+
+args=()
+dropped=()
+for arg in "$@"; do
+    case "$arg" in
+        --enable-code-server)
+            dropped+=("$arg")
+            ;;
+        *)
+            args+=("$arg")
+            ;;
+    esac
+done
+
+if [ ${#dropped[@]} -gt 0 ]; then
+    echo "[$(date -Iseconds)] WARNING: dropped unsupported flags: ${dropped[*]}" >> "$DEBUG_LOG"
+    echo "[$(date -Iseconds)] retained flags: ${args[*]}" >> "$DEBUG_LOG"
+fi
+
+exec droid "${args[@]}"
 DROIDWRAPPER
 chmod 755 "$DEST_DIR/resources/bin/droid"
 
@@ -85,7 +112,7 @@ Name:           factory-desktop
 Version:        ${VERSION}
 Release:        1
 Summary:        Factory Desktop — AI coding assistant (community Linux port)
-License:        MIT
+License:        Proprietary (Factory Desktop)
 Group:          Development/Tools
 URL:            https://github.com/username/factory-desktop-linux
 Requires:       bash, glibc, libX11, libxcb, libxkbcommon, libdrm

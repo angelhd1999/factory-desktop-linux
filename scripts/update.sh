@@ -3,7 +3,7 @@
 # factory-desktop-update — Check for new versions and rebuild
 #
 # Usage:
-#   factory-desktop-update           Check and prompt if update available
+#   factory-desktop-update           Check, confirm, then update
 #   factory-desktop-update --force   Rebuild even if same version
 #   factory-desktop-update --check   Only check, don't build
 #
@@ -13,11 +13,9 @@ set -euo pipefail
 # ── Resolve paths ───────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
-# When installed, the script lives in /opt/factory-desktop (root-owned).
-# Use a writable cache directory for downloads and builds.
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/factory-desktop-update"
-SOURCE_DIR="$HOME/projects/factory-desktop-linux"
-VERSION_FILE="$SOURCE_DIR/.current-version"
+REPO_DIR="$CACHE_DIR/repo"
+REPO_URL="https://github.com/angelhd1999/factory-desktop-linux.git"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -31,13 +29,27 @@ get_latest_version() {
         grep -oP '"latestVersion"\s*:\s*"\K[^"]+' || echo ""
 }
 
-# ── Get currently built version ─────────────────────────────────────
+# ── Get currently installed version ─────────────────────────────────
 
 get_current_version() {
-    if [ -f "$VERSION_FILE" ]; then
-        cat "$VERSION_FILE"
+    dpkg-query -W -f='${Version}' factory-desktop 2>/dev/null || echo "0"
+}
+
+# ── Ensure repo is available ────────────────────────────────────────
+
+ensure_repo() {
+    mkdir -p "$CACHE_DIR"
+    if [ -d "$REPO_DIR/.git" ]; then
+        cd "$REPO_DIR"
+        git fetch origin --quiet 2>/dev/null || true
+        git reset --hard origin/main --quiet 2>/dev/null || true
     else
-        echo "0.82.0"
+        rm -rf "$REPO_DIR"
+        git clone --depth 1 "$REPO_URL" "$REPO_DIR" 2>/dev/null || {
+            echo -e "${RED}Error: Could not clone repository.${NC}"
+            echo "Make sure git is installed and you have internet access."
+            exit 1
+        }
     fi
 }
 
@@ -82,20 +94,23 @@ echo ""
 echo -e "${YELLOW}Updating from v$CURRENT to v$LATEST...${NC}"
 echo ""
 
+# ── Confirmation ────────────────────────────────────────────────────
+
+read -r -p "Proceed with update? [y/N] " CONFIRM
+if [ "$CONFIRM" != "y" ] && [ "$CONFIRM" != "Y" ]; then
+    echo "Update cancelled."
+    exit 0
+fi
+
 # ── Stop running instance ───────────────────────────────────────────
 
 echo "[0/4] Stopping running Factory Desktop..."
 killall -q -TERM factory-desktop-bin 2>/dev/null || true
-for i in $(seq 1 50); do
-    killall -0 factory-desktop-bin 2>/dev/null || break
-    sleep 0.1
-done
-killall -q -KILL factory-desktop-bin 2>/dev/null || true
-echo "  Stopped."
+echo "  Done."
 
 # ── Rebuild ─────────────────────────────────────────────────────────
 
-mkdir -p "$CACHE_DIR"
+ensure_repo
 cd "$CACHE_DIR"
 
 echo "[1/4] Cleaning old build..."
@@ -107,18 +122,14 @@ curl -L -o "$CACHE_DIR/Factory-arm64.dmg" \
     -w "\nHTTP %{http_code} | %{size_download} bytes\n"
 
 echo "[3/4] Building..."
-cd "$SOURCE_DIR"
-# Copy DMG to source dir for the Makefile
-cp "$CACHE_DIR/Factory-arm64.dmg" "$SOURCE_DIR/"
+cd "$REPO_DIR"
+cp "$CACHE_DIR/Factory-arm64.dmg" "$REPO_DIR/"
 make patch asar electron assemble package VERSION="$LATEST"
 
 echo "[4/4] Installing..."
-pkill -f factory-desktop-bin 2>/dev/null || true
-sleep 1
+sudo dpkg -i "$REPO_DIR/dist/factory-desktop_${LATEST}_amd64.deb"
 
-sudo dpkg -i "$SOURCE_DIR/dist/factory-desktop_${LATEST}_amd64.deb"
-
-echo "$LATEST" > "$VERSION_FILE"
+echo "$LATEST" > "$REPO_DIR/.current-version"
 
 echo ""
 echo -e "${GREEN}Updated to v$LATEST!${NC}"

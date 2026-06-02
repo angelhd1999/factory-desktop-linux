@@ -55,14 +55,33 @@ cp "$BUILD_DIR/app.asar" "$DEST_DIR/resources/"
 
 cat > "$DEST_DIR/resources/bin/droid" << 'DROIDWRAPPER'
 #!/usr/bin/env bash
+# Factory Desktop Linux — droid wrapper
+# Calls the system-installed droid CLI, filtering flags not supported
+# by the local droid version. Logs dropped flags for debuggability.
 set -euo pipefail
+
+LOG_DIR="${HOME}/.local/state/factory-desktop"
+mkdir -p "$LOG_DIR"
+DEBUG_LOG="$LOG_DIR/droid-wrapper.log"
+
 args=()
+dropped=()
 for arg in "$@"; do
     case "$arg" in
-        --enable-code-server) ;;
-        *) args+=("$arg") ;;
+        --enable-code-server)
+            dropped+=("$arg")
+            ;;
+        *)
+            args+=("$arg")
+            ;;
     esac
 done
+
+if [ ${#dropped[@]} -gt 0 ]; then
+    echo "[$(date -Iseconds)] WARNING: dropped unsupported flags: ${dropped[*]}" >> "$DEBUG_LOG"
+    echo "[$(date -Iseconds)] retained flags: ${args[*]}" >> "$DEBUG_LOG"
+fi
+
 exec droid "${args[@]}"
 DROIDWRAPPER
 chmod 755 "$DEST_DIR/resources/bin/droid"

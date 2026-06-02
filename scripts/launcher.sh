@@ -5,8 +5,7 @@
 # This script starts the Factory Desktop app using the Linux Electron binary
 # and the patched app.asar. It handles:
 #   - Wayland/X11 detection
-#   - GPU sandbox disabling (required for Electron on many Linux setups)
-#   - Single-instance enforcement
+#   - GPU workarounds (opt-in, for broken drivers)
 #
 
 set -euo pipefail
@@ -33,21 +32,8 @@ fi
 
 # ── Environment ─────────────────────────────────────────────────────
 
-# Disable Chromium sandbox (required on many Linux distros)
-export ELECTRON_NO_SANDBOX=1
-
-# Disable GPU sandbox (fixes blank windows on some GPUs)
-export ELECTRON_DISABLE_GPU_SANDBOX=1
-
-# Disable Chromium's SUID sandbox (not needed with --no-sandbox)
-export ELECTRON_NO_ATTACH_CONSOLE=1
-
-# Force production mode (prevents Vite dev server connection)
-export ELECTRON_IS_DEV=0
+# Suppress library debug warnings (React, styled-components, Bluebird)
 export NODE_ENV=production
-export VITE_MODE=production
-export FACTORY_RELEASE_CHANNEL=production
-export FACTORY_DEPLOYMENT_ENV=production
 
 # ── Debug logging to file ───────────────────────────────────────────
 
@@ -75,14 +61,22 @@ if [ "${WAYLAND_DISPLAY:-}" != "" ]; then
     fi
 fi
 
-# ── GPU flags ───────────────────────────────────────────────────────
+# ── GPU workarounds (opt-in for broken drivers) ─────────────────────
 
-# Disable GPU compositing (prevents flickering on some drivers)
-ELECTRON_ARGS+=(--disable-gpu-compositing)
-
-# Allow user to override with FACTORY_ENABLE_GPU=1
-if [ "${FACTORY_ENABLE_GPU:-0}" = "0" ]; then
+if [ "${FACTORY_DISABLE_GPU:-0}" = "1" ]; then
     ELECTRON_ARGS+=(--disable-gpu)
+fi
+
+if [ "${FACTORY_DISABLE_GPU_COMPOSITING:-0}" = "1" ]; then
+    ELECTRON_ARGS+=(--disable-gpu-compositing)
+fi
+
+if [ "${FACTORY_DISABLE_GPU_SANDBOX:-0}" = "1" ]; then
+    ELECTRON_ARGS+=(--disable-gpu-sandbox)
+fi
+
+if [ "${FACTORY_NO_SANDBOX:-0}" = "1" ]; then
+    ELECTRON_ARGS+=(--no-sandbox)
 fi
 
 # ── Launch ──────────────────────────────────────────────────────────
@@ -96,5 +90,4 @@ echo "[factory-desktop] Debug log: $DEBUG_LOG"
 
 exec "$ELECTRON_BIN" \
     "${ELECTRON_ARGS[@]}" \
-    --no-sandbox \
     "$@" 2>>"$DEBUG_LOG"

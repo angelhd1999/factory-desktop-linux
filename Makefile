@@ -1,6 +1,6 @@
-.PHONY: all build clean download extract patch asar electron assemble package install help test check
+.PHONY: all build clean download extract patch asar electron assemble package install-deb help test check
 
-VERSION ?= 0.95.0
+VERSION := $(shell cat .current-version 2>/dev/null || echo "0.0.0")
 ELECTRON_VERSION = 39.2.7
 DMG_URL = https://app.factory.ai/api/desktop?platform=darwin&architecture=arm64
 ELECTRON_URL = https://github.com/electron/electron/releases/download/v$(ELECTRON_VERSION)/electron-v$(ELECTRON_VERSION)-linux-x64.zip
@@ -22,6 +22,14 @@ download:  ## Download the macOS DMG
 	else \
 		echo "[download] Fetching Factory Desktop macOS DMG..."; \
 		curl -L -o Factory-arm64.dmg "$(DMG_URL)" -w "\nHTTP %{http_code} | %{size_download} bytes\n"; \
+		echo "[download] Verifying..."; \
+		SIZE=$$(stat -c%s Factory-arm64.dmg 2>/dev/null || stat -f%z Factory-arm64.dmg 2>/dev/null); \
+		if [ "$$SIZE" -lt 100000000 ]; then \
+			echo "ERROR: DMG too small ($$SIZE bytes) — download likely corrupted"; \
+			rm -f Factory-arm64.dmg; \
+			exit 1; \
+		fi; \
+		echo "[download] Verified: $$SIZE bytes"; \
 		echo "[download] Done."; \
 	fi
 
@@ -60,6 +68,13 @@ electron:  ## Download Linux Electron $(ELECTRON_VERSION)
 		echo "[electron] Already downloaded. Use 'make clean-electron' to re-download."; \
 	else \
 		curl -L -o build/electron.zip "$(ELECTRON_URL)" && \
+		SIZE=$$(stat -c%s build/electron.zip 2>/dev/null || stat -f%z build/electron.zip 2>/dev/null); \
+		if [ "$$SIZE" -lt 50000000 ]; then \
+			echo "ERROR: Electron zip too small ($$SIZE bytes) — download likely corrupted"; \
+			rm -f build/electron.zip; \
+			exit 1; \
+		fi; \
+		echo "[electron] Verified: $$SIZE bytes"; \
 		unzip -q build/electron.zip -d build/electron && \
 		rm build/electron.zip && \
 		echo "[electron] Done."; \
@@ -84,10 +99,10 @@ package: assemble  ## Build .deb package
 
 # ── Install ─────────────────────────────────────────────────────────
 
-install: package  ## Install the .deb package
-	@echo "[install] Installing factory-desktop..."
+install-deb: package  ## Install the .deb package
+	@echo "[install-deb] Installing factory-desktop..."
 	sudo dpkg -i dist/factory-desktop_$(VERSION)_amd64.deb
-	@echo "[install] Done. Launch with: factory-desktop"
+	@echo "[install-deb] Done. Launch with: factory-desktop"
 
 # ── Run (dev mode, from build dir) ──────────────────────────────────
 

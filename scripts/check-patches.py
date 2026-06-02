@@ -2,10 +2,11 @@
 """Verify that all Linux patches were applied correctly.
 
 Uses regex checks that survive Vite minified variable renames
-(e.g., z→fe, Tt→$t, Ve→xe)."""
+(e.g., z→fe, Tt→$t, Ve→xe). Also validates JS syntax."""
 
 import sys
 import re
+import subprocess
 from pathlib import Path
 
 BUILD_DIR = Path("app-unpacked/.vite/build")
@@ -78,5 +79,18 @@ if all_ok:
     print("\nAll patches applied correctly.")
 else:
     print("\nSome patches failed. Re-run 'make patch'.")
+
+# ── JS syntax validation ────────────────────────────────────────────
+
+result = subprocess.run(
+    ["node", "-e",
+     f"new Function(require('fs').readFileSync('{bundle_path}', 'utf-8'))"],
+    capture_output=True, text=True
+)
+if result.returncode == 0:
+    print("JS syntax validation: PASS")
+else:
+    print(f"JS syntax validation: FAIL — {result.stderr.strip()}")
+    all_ok = False
 
 sys.exit(0 if all_ok else 1)

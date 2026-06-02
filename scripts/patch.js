@@ -137,6 +137,12 @@ function patch() {
 
   let content = fs.readFileSync(BUNDLE_PATH, 'utf-8');
   const originalSize = content.length;
+
+  // Create backup before patching
+  const backupPath = BUNDLE_PATH + '.bak';
+  fs.writeFileSync(backupPath, content, 'utf-8');
+  console.log(`[patch] Backup saved: ${backupPath}`);
+
   let appliedCount = 0;
 
   for (const patchDef of patches) {
@@ -152,6 +158,18 @@ function patch() {
   }
 
   fs.writeFileSync(BUNDLE_PATH, content, 'utf-8');
+
+  // Validate patched JS is syntactically valid
+  try {
+    new Function(content);
+    console.log('[patch] JS syntax validation: PASS');
+  } catch (e) {
+    console.error(`[patch] JS syntax validation: FAIL — ${e.message}`);
+    console.error('[patch] Restoring backup...');
+    fs.copyFileSync(backupPath, BUNDLE_PATH);
+    process.exit(1);
+  }
+
   console.log(`\nApplied ${appliedCount}/${patches.length} patch(es). Bundle: ${BUNDLE_PATH}`);
 }
 

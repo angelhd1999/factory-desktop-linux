@@ -64,20 +64,30 @@ cat > "${PACKAGE_DIR}/opt/${PACKAGE_NAME}/resources/bin/droid" << 'WRAPPER'
 #!/usr/bin/env bash
 # Factory Desktop Linux — droid wrapper
 # Calls the system-installed droid CLI, filtering flags not supported
-# by the local droid version.
+# by the local droid version. Logs dropped flags for debuggability.
 set -euo pipefail
 
+LOG_DIR="${HOME}/.local/state/factory-desktop"
+mkdir -p "$LOG_DIR"
+DEBUG_LOG="$LOG_DIR/droid-wrapper.log"
+
 args=()
+dropped=()
 for arg in "$@"; do
     case "$arg" in
         --enable-code-server)
-            # Flag removed from droid CLI; safe to drop
+            dropped+=("$arg")
             ;;
         *)
             args+=("$arg")
             ;;
     esac
 done
+
+if [ ${#dropped[@]} -gt 0 ]; then
+    echo "[$(date -Iseconds)] WARNING: dropped unsupported flags: ${dropped[*]}" >> "$DEBUG_LOG"
+    echo "[$(date -Iseconds)] retained flags: ${args[*]}" >> "$DEBUG_LOG"
+fi
 
 exec droid "${args[@]}"
 WRAPPER
@@ -147,36 +157,26 @@ cat > "${PACKAGE_DIR}/DEBIAN/prerm" << 'PRERM'
 #!/bin/sh
 set -e
 
-# Gracefully stop any running Factory Desktop instance
-BIN="/opt/factory-desktop/factory-desktop-bin"
+# Gracefully stop any running Factory Desktop instance.
+# Send SIGTERM only — the app handles cleanup, including
+# in-progress droid agent operations.
 if command -v killall >/dev/null 2>&1; then
     killall -q -TERM factory-desktop-bin 2>/dev/null || true
-    # Wait up to 5 seconds for graceful shutdown
-    for i in $(seq 1 50); do
-        killall -0 factory-desktop-bin 2>/dev/null || break
-        sleep 0.1
-    done
-    # Force kill if still running
-    killall -q -KILL factory-desktop-bin 2>/dev/null || true
 fi
 exit 0
 PRERM
 chmod 755 "${PACKAGE_DIR}/DEBIAN/prerm"
 
-# postinst: enable automatic update checks
+# postinst: inform user about optional update checks
 cat > "${PACKAGE_DIR}/DEBIAN/postinst" << 'POSTINST'
 #!/bin/sh
 set -e
 
-# Enable the daily update check timer for the installing user
-if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ]; then
-    su "${SUDO_USER}" -c "systemctl --user enable --now factory-desktop-update-check.timer" 2>/dev/null || true
-fi
-
-# Also print a message so users who install without sudo know
 echo ""
-echo "Factory Desktop update check timer installed."
-echo "Enable it with: systemctl --user enable --now factory-desktop-update-check.timer"
+echo "Factory Desktop installed successfully."
+echo ""
+echo "Optional: enable automatic daily update checks:"
+echo "  systemctl --user enable --now factory-desktop-update-check.timer"
 echo ""
 
 exit 0
