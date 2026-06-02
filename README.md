@@ -73,6 +73,8 @@ factory-desktop-update --check   # Check only (don't install)
 factory-desktop-update --force   # Rebuild even if already current
 ```
 
+Updated `.deb` packages are published automatically when Factory releases a new desktop version — the CI pipeline detects it within 24 hours.
+
 ## Troubleshooting
 
 ### GPU or rendering issues
@@ -100,9 +102,6 @@ Under Wayland, XWayland is used by default for better popup positioning. For pur
 ```bash
 FACTORY_WAYLAND=1 factory-desktop
 ```
-```
-
-Updated `.deb` packages are published automatically when Factory releases a new desktop version — the CI pipeline detects it within 24 hours.
 
 ## Uninstall
 
