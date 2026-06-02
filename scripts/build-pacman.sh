@@ -142,7 +142,7 @@ PKGINFO
 cd "$PKG_DIR"
 bsdtar -czf .MTREE \
     --options '!all,use-set,type,uid,gid,mode,time,size,md5,sha256,link' \
-    opt usr .PKGINFO 2>/dev/null || true
+    opt usr .PKGINFO || true
 
 # ── Package ─────────────────────────────────────────────────────────
 
@@ -152,7 +152,11 @@ mkdir -p "$DIST_DIR"
 PKG_FILE="$DIST_DIR/$PKG_NAME-$VERSION-1-$ARCH.pkg.tar.zst"
 
 # Build tar archive and compress with zstd
-bsdtar -cf - opt usr .PKGINFO .MTREE 2>/dev/null | zstd -c -19 -o "$PKG_FILE"
+# Use a temp file to avoid pipefail issues with process substitution
+TEMP_TAR="$DIST_DIR/.factory-desktop-temp.tar"
+bsdtar -cf "$TEMP_TAR" opt usr .PKGINFO .MTREE
+zstd -19 "$TEMP_TAR" -o "$PKG_FILE"
+rm -f "$TEMP_TAR"
 
 rm -rf "$(dirname "$PKG_DIR")"
 
