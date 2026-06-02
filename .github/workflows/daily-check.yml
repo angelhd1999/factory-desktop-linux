@@ -2,8 +2,8 @@ name: Daily Version Check & Auto-Release
 
 on:
   schedule:
-    - cron: '0 6 * * *'   # daily at 6 AM UTC
-  workflow_dispatch:       # manual trigger
+    - cron: '0 6 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -24,7 +24,6 @@ jobs:
           echo "LATEST=$LATEST"
           echo "LATEST=$LATEST" >> "$GITHUB_OUTPUT"
 
-          # Check if we already have a tag for this version
           if git rev-parse "v$LATEST" >/dev/null 2>&1; then
             echo "Already released v$LATEST — nothing to do."
             echo "skip=true" >> "$GITHUB_OUTPUT"
@@ -60,7 +59,6 @@ jobs:
           make patch 2>&1 | tee /tmp/patch-output.txt
           python3 scripts/check-patches.py 2>&1 | tee /tmp/check-output.txt
 
-          # Detect if any patches failed
           if grep -q 'WARNING.*not found' /tmp/patch-output.txt; then
             echo "patches_failed=true" >> "$GITHUB_OUTPUT"
             grep 'WARNING.*not found' /tmp/patch-output.txt > /tmp/failed-patches.txt
@@ -68,36 +66,32 @@ jobs:
             echo "patches_failed=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Auto-fix patches with Qwen (if patterns broke)
+      - name: Auto-fix patches with Qwen
         if: steps.patch.outputs.patches_failed == 'true'
         env:
           QWEN_API_KEY: ${{ secrets.NANBUILDERS_API_KEY }}
         run: |
-          echo "⚠️  Patches failed — attempting auto-repair with Qwen..."
+          echo "Patches failed — attempting auto-repair with Qwen..."
           cat /tmp/failed-patches.txt
 
           BUNDLE_FILE=$(ls app-unpacked/.vite/build/index-*.js | head -1)
           echo "Bundle: $BUNDLE_FILE"
 
-          # Extract context around each failed patch area for Qwen analysis
           python3 scripts/auto-fix-patches.py \
             --bundle "$BUNDLE_FILE" \
-            --failed /tmp/failed-patches.txt \
             --api-key "$QWEN_API_KEY"
 
-          # Re-try patching with the repaired patterns
           rm -rf app-unpacked
           make extract
           make patch
           python3 scripts/check-patches.py
 
-          # If still failing, stop (needs manual intervention)
           if ! python3 scripts/check-patches.py; then
-            echo "❌ Auto-fix failed — manual intervention required"
+            echo "Auto-fix failed — manual intervention required"
             exit 1
           fi
 
-          echo "✅ Patches auto-repaired successfully"
+          echo "Patches auto-repaired successfully"
 
       - name: Repack asar and download Electron
         if: steps.version.outputs.skip != 'true'
@@ -109,7 +103,6 @@ jobs:
         if: steps.version.outputs.skip != 'true'
         run: |
           bash scripts/build-deb.sh ${{ steps.version.outputs.LATEST }}
-          echo "DEB_FILE=$(ls dist/*.deb)" >> "$GITHUB_OUTPUT"
 
       - name: Package .rpm
         if: steps.version.outputs.skip != 'true'
@@ -122,26 +115,24 @@ jobs:
         continue-on-error: true
         run: |
           bash scripts/build-pacman.sh ${{ steps.version.outputs.LATEST }} || \
-            echo "::warning::Arch packaging failed — build script needs manual setup"
+            echo "::warning::Arch packaging failed"
 
       - name: Update version and tag
         if: steps.version.outputs.skip != 'true'
         run: |
-          echo "${{ steps.version.outputs.LATEST }}" > .current-version
-          sed -i "s/VERSION ?= .*/VERSION ?= ${{ steps.version.outputs.LATEST }}/" Makefile
+          V="${{ steps.version.outputs.LATEST }}"
+          echo "$V" > .current-version
+          sed -i "s|VERSION ?= .*|VERSION ?= $V|" Makefile
 
           git config user.name "factory-droid[bot]"
           git config user.email "138933559+factory-droid[bot]@users.noreply.github.com"
 
-          # Stage any auto-fix changes + version bump
           git add -A
-          git diff --cached --quiet || git commit -m "Release v${{ steps.version.outputs.LATEST }} (auto)
+          git diff --cached --quiet || git commit -m "Release v$V (auto)"
 
-      Co-authored-by: factory-droid[bot] <138933559+factory-droid[bot]@users.noreply.github.com>"
-
-          git tag -a "v${{ steps.version.outputs.LATEST }}" -m "Auto-release v${{ steps.version.outputs.LATEST }}"
+          git tag -a "v$V" -m "Auto-release v$V"
           git push origin main
-          git push origin "v${{ steps.version.outputs.LATEST }}"
+          git push origin "v$V"
 
       - name: Create GitHub Release
         if: steps.version.outputs.skip != 'true'
