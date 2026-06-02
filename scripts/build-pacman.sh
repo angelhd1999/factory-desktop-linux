@@ -156,12 +156,18 @@ depend = fontconfig
 depend = freetype2
 PKGINFO
 
-# ── .MTREE ─────────────────────────────────────────────────────────
+# ── .MTREE (optional, some bsdtar versions don't support) ──────────
 
 cd "$PKG_DIR"
-bsdtar -czf .MTREE \
+MTREE_CREATED=false
+if bsdtar -czf .MTREE \
     --options '!all,use-set,type,uid,gid,mode,time,size,md5,sha256,link' \
-    opt usr .PKGINFO || true
+    opt usr .PKGINFO 2>/dev/null; then
+    MTREE_CREATED=true
+    echo "[build-pacman] .MTREE created"
+else
+    echo "[build-pacman] .MTREE skipped (bsdtar version doesn't support options flag)"
+fi
 
 # ── Package ─────────────────────────────────────────────────────────
 
@@ -173,7 +179,11 @@ PKG_FILE="$DIST_DIR/$PKG_NAME-$VERSION-1-$ARCH.pkg.tar.zst"
 # Build tar archive and compress with zstd
 # Use a temp file to avoid pipefail issues with process substitution
 TEMP_TAR="$DIST_DIR/.factory-desktop-temp.tar"
-bsdtar -cf "$TEMP_TAR" opt usr .PKGINFO .MTREE
+if $MTREE_CREATED; then
+    bsdtar -cf "$TEMP_TAR" opt usr .PKGINFO .MTREE
+else
+    bsdtar -cf "$TEMP_TAR" opt usr .PKGINFO
+fi
 zstd -19 "$TEMP_TAR" -o "$PKG_FILE"
 rm -f "$TEMP_TAR"
 
