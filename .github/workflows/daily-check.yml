@@ -116,7 +116,9 @@ jobs:
           sudo apt-get install -f -y
 
           echo "Launching headless smoke test..."
-          timeout 30 xvfb-run --auto-servernum factory-desktop 2>&1 | tee /tmp/smoke-test.log || true
+          # CI containers lack user namespaces and GPU — use workarounds
+          FACTORY_DISABLE_GPU=1 FACTORY_NO_SANDBOX=1 \
+            timeout 30 xvfb-run --auto-servernum factory-desktop 2>&1 | tee /tmp/smoke-test.log || true
 
           echo "--- Smoke test output ---"
           cat /tmp/smoke-test.log
