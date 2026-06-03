@@ -45,7 +45,7 @@ jobs:
         if: steps.version.outputs.skip != 'true'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq p7zip-full dpkg-dev fakeroot rpm zstd libarchive-tools alien xvfb
+          sudo apt-get install -y -qq p7zip-full dpkg-dev fakeroot rpm zstd libarchive-tools alien xvfb libnotify4 libsecret-1-0
           npm install @electron/asar
 
       - name: Download Factory DMG
@@ -112,7 +112,7 @@ jobs:
         if: steps.version.outputs.skip != 'true'
         run: |
           echo "Installing DEB..."
-          sudo dpkg -i dist/factory-desktop_${{ steps.version.outputs.LATEST }}_amd64.deb
+          sudo dpkg -i dist/factory-desktop_${{ steps.version.outputs.LATEST }}_amd64.deb || true
           sudo apt-get install -f -y
 
           echo "Launching headless smoke test..."
