@@ -147,8 +147,24 @@ jobs:
           bash scripts/build-pacman.sh ${{ steps.version.outputs.LATEST }} || \
             echo "::warning::Arch packaging failed"
 
-      - name: Update version and create PR
-        if: steps.version.outputs.skip != 'true'
+      - name: Update version, tag, and release
+        if: steps.version.outputs.skip != 'true' && steps.patch.outputs.patches_failed != 'true'
+        run: |
+          V="${{ steps.version.outputs.LATEST }}"
+          echo "$V" > .current-version
+
+          git config user.name "factory-droid[bot]"
+          git config user.email "138933559+factory-droid[bot]@users.noreply.github.com"
+
+          git add -A
+          git diff --cached --quiet || git commit -m "Release v$V (auto)"
+
+          git push origin main
+          git tag -a "v$V" -m "Auto-release v$V"
+          git push origin "v$V"
+
+      - name: Create PR for Qwen auto-fix review
+        if: steps.version.outputs.skip != 'true' && steps.patch.outputs.patches_failed == 'true'
         run: |
           V="${{ steps.version.outputs.LATEST }}"
           BRANCH="auto-release-v$V"
@@ -159,27 +175,15 @@ jobs:
 
           git checkout -b "$BRANCH"
           git add -A
-          git diff --cached --quiet || git commit -m "Release v$V (auto)"
+          git diff --cached --quiet || git commit -m "Release v$V (auto-fix patches)"
 
           git push origin "$BRANCH"
 
           gh pr create \
             --base main \
             --head "$BRANCH" \
-            --title "Release v$V (auto)" \
-            --body "Automated release for Factory Desktop v$V. Patches verified, smoke test passed." \
-            --label "autorelease"
-
-          # Auto-merge if smoke test passed
-          gh pr merge "$BRANCH" --auto --squash --delete-branch || \
-            echo "::warning::Auto-merge not available (may require branch protection rule adjustment)"
-
-          # Tag after merge
-          sleep 10
-          git checkout main
-          git pull origin main
-          git tag -a "v$V" -m "Auto-release v$V"
-          git push origin "v$V"
+            --title "Release v$V (Qwen auto-fix — review needed)" \
+            --body "Patches failed and were auto-repaired by Qwen. Smoke test passed. Please review the changes to \`scripts/patch.js\` before merging."
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
