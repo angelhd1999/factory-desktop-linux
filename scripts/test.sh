@@ -74,7 +74,7 @@ echo "--- Patch auto-detection ---"
 
 MAIN_JS="$PROJECT_DIR/app-unpacked/.vite/build/main.js"
 if [ -f "$MAIN_JS" ]; then
-    BUNDLE=$(grep -oP 'require\("\./\Kindex-[A-Za-z0-9]+\.js' "$MAIN_JS")
+    BUNDLE=$(grep -oP 'require\("\./\Kindex-[A-Za-z0-9_-]+\.js' "$MAIN_JS")
     assert "Bundle filename detected: $BUNDLE" [ -n "$BUNDLE" ]
     assert "Bundle file exists" [ -f "$PROJECT_DIR/app-unpacked/.vite/build/$BUNDLE" ]
 fi

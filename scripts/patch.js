@@ -27,7 +27,7 @@ if (!fs.existsSync(mainEntry)) {
 }
 
 const mainContent = fs.readFileSync(mainEntry, 'utf-8');
-const match = mainContent.match(/require\("\.\/(index-[A-Za-z0-9]+\.js)"\)/);
+const match = mainContent.match(/require\("\.\/(index-[A-Za-z0-9_-]+\.js)"\)/);
 if (!match) {
   console.error('ERROR: Could not detect main bundle filename from main.js.');
   console.error('main.js contents:', mainContent);

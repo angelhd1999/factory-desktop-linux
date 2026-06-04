@@ -18,7 +18,7 @@ if not MAIN_JS.exists():
     sys.exit(1)
 
 main_content = MAIN_JS.read_text()
-m = re.search(r'require\("\./(index-[A-Za-z0-9]+\.js)"\)', main_content)
+m = re.search(r'require\("\./(index-[A-Za-z0-9_-]+\.js)"\)', main_content)
 if not m:
     print(f"ERROR: Could not detect bundle filename from {MAIN_JS}")
     sys.exit(1)
