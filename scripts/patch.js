@@ -72,6 +72,12 @@ const patches = [
     find: /([\w$]{1,3})\.app\.isPackaged\?([\w$]{1,3})\.loadFile\(([\w$]{1,3})\.join\(__dirname,"\.\.","renderer","main_window","index\.html"\)\):\(\2\.loadURL\("http:\/\/localhost:5173"\),\2\.webContents\.openDevTools\(\)\)/,
     replace: '$2.loadFile($3.join(__dirname,"..","renderer","main_window","index.html"))',
   },
+  {
+    name: 'window: use native title bar controls on Linux',
+    type: 'regex',
+    find: /const ([\w$]{1,3})=process\.platform==="win32";([\w$]{1,3})=new ([\w$]{1,3})\.BrowserWindow\(\{backgroundColor:/,
+    replace: 'const $1=process.platform==="win32"||process.platform==="linux";$2=new $3.BrowserWindow({backgroundColor:',
+  },
 ];
 
 // ── Patch engine ───────────────────────────────────────────────────

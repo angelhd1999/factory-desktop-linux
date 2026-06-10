@@ -9,11 +9,11 @@ Run [Factory Desktop](https://factory.ai/product/desktop) on Linux. The official
 **What it does:**
 - Downloads the **official** Factory macOS DMG directly from `https://app.factory.ai` — you're running Factory's own code
 - Downloads the **official** Linux Electron binary directly from GitHub releases
-- Applies 4 small compatibility patches so the macOS app runs on Linux (platform checks, tray behavior)
+- Applies 5 small compatibility patches so the macOS app runs on Linux (platform checks, tray behavior, native Linux window controls)
 - Packages everything into a `.deb`/`.rpm` for easy install
 
 **What it does NOT do:**
-- Does **not** modify Factory's business logic, auth, or data handling — only 4 platform-gating checks are patched
+- Does **not** modify Factory's business logic, auth, or data handling — only platform-gating/window-frame checks are patched
 - Does **not** bundle any native modules — Factory Desktop has zero native `.node` dependencies
 - Does **not** require rebuilding anything — the app.asar JavaScript is platform-agnostic by design
 

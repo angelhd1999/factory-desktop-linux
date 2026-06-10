@@ -4,7 +4,7 @@
 #
 # Tests:
 #   1. Patch script runs without errors
-#   2. All 4 patches apply correctly (check-patches.py)
+#   2. All 5 patches apply correctly (check-patches.py)
 #   3. DEB package builds without errors
 #   4. DEB contains required files
 #   5. Patched asar has no dev-mode references
@@ -88,7 +88,7 @@ node scripts/patch.js > /dev/null 2>&1
 assert "patch.js runs without error" true
 
 python3 scripts/check-patches.py > /tmp/factory-test-check.txt 2>&1
-assert "All 4 patches pass" grep -q "All patches applied correctly" /tmp/factory-test-check.txt
+assert "All 5 patches pass" grep -q "All patches applied correctly" /tmp/factory-test-check.txt
 
 # ── Test 4: No dev-mode strings in patched bundle ──────────────────
 
@@ -135,6 +135,8 @@ assert "DEB has factory-desktop-bin" test -n "$(echo "$DEB_LISTING" | grep 'fact
 assert "DEB has droid wrapper"        test -n "$(echo "$DEB_LISTING" | grep 'resources/bin/droid')"
 assert "DEB has app.asar"             test -n "$(echo "$DEB_LISTING" | grep 'resources/app.asar')"
 assert "DEB has desktop entry"        test -n "$(echo "$DEB_LISTING" | grep 'applications/factory-desktop.desktop')"
+assert "DEB has Factory icon"         test -n "$(echo "$DEB_LISTING" | grep 'icons/hicolor/scalable/apps/factory-desktop.svg')"
+assert "DEB has pixmaps fallback icon" test -n "$(echo "$DEB_LISTING" | grep 'pixmaps/factory-desktop.svg')"
 assert "DEB has update script"        test -n "$(echo "$DEB_LISTING" | grep 'factory-desktop-update')"
 assert "DEB has launcher"             test -n "$(echo "$DEB_LISTING" | grep 'opt/factory-desktop/factory-desktop$')"
 

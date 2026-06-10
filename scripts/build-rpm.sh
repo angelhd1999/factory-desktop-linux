@@ -20,8 +20,14 @@ RPM_NAME="factory-desktop-${VERSION}-1.${ARCH}"
 PACKAGE_DIR="$PROJECT_DIR/build/rpm-build"
 RPM_ROOT="$PACKAGE_DIR/root"
 DEST_DIR="$RPM_ROOT/opt/factory-desktop"
+ICON_SOURCE="$PROJECT_DIR/assets/factory-desktop.svg"
 
 echo "[build-rpm] Creating RPM package: $RPM_NAME"
+
+if [ ! -f "$ICON_SOURCE" ]; then
+    echo "ERROR: Factory icon not found at $ICON_SOURCE" >&2
+    exit 1
+fi
 
 rm -rf "$PACKAGE_DIR"
 mkdir -p "$DEST_DIR"
@@ -93,16 +99,18 @@ cat > "$RPM_ROOT/usr/share/applications/factory-desktop.desktop" << 'DESKTOP'
 Name=Factory Desktop
 Comment=Droid AI coding assistant
 Exec=factory-desktop
+Icon=factory-desktop
 Type=Application
 Categories=Development;
-StartupWMClass=factory-desktop
+StartupWMClass=Factory
 DESKTOP
 
 # ── Icon ────────────────────────────────────────────────────────────
 
-# Placeholder — replace with actual icon when available
-mkdir -p "$RPM_ROOT/usr/share/icons/hicolor/256x256/apps"
-touch "$RPM_ROOT/usr/share/icons/hicolor/256x256/apps/factory-desktop.png"
+mkdir -p "$RPM_ROOT/usr/share/icons/hicolor/scalable/apps"
+mkdir -p "$RPM_ROOT/usr/share/pixmaps"
+cp "$ICON_SOURCE" "$RPM_ROOT/usr/share/icons/hicolor/scalable/apps/factory-desktop.svg"
+cp "$ICON_SOURCE" "$RPM_ROOT/usr/share/pixmaps/factory-desktop.svg"
 
 # ── Build with rpmbuild ────────────────────────────────────────────
 
@@ -130,7 +138,8 @@ cp -r %{_builddir}/root/* %{buildroot}/
 /usr/bin/factory-desktop
 /usr/bin/factory-desktop-update
 /usr/share/applications/factory-desktop.desktop
-/usr/share/icons/hicolor/256x256/apps/factory-desktop.png
+/usr/share/icons/hicolor/scalable/apps/factory-desktop.svg
+/usr/share/pixmaps/factory-desktop.svg
 
 %changelog
 * $(date '+%a %b %d %Y') Community Maintainer <dev@example.com> ${VERSION}-1

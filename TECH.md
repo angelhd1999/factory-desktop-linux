@@ -7,7 +7,7 @@ Factory Desktop is an **Electron** app (v39.2.7, bundle ID `com.electron.factory
 1. Downloads the official macOS DMG from `https://app.factory.ai/api/desktop?platform=darwin&architecture=arm64`
 2. Extracts `app.asar` with `7z`
 3. Auto-detects the Vite-bundled JS file (hash changes per release)
-4. Patches 4 platform-specific checks in the JS bundle
+4. Patches 5 platform-specific checks in the JS bundle
 5. Swaps the macOS Electron binary for a Linux Electron 39.2.7 binary
 6. Packages for your distribution
 
@@ -32,7 +32,7 @@ Factory-arm64.dmg (~200 MB)
 
 ## Patches applied
 
-Only **4 changes** in the minified JS bundle. The bundle filename is auto-detected from `main.js`, so patches survive Vite hash changes across releases. Patch patterns use regex with `[\w$]{1,3}` wildcards to survive minified variable renames.
+Only **5 changes** in the minified JS bundle. The bundle filename is auto-detected from `main.js`, so patches survive Vite hash changes across releases. Patch patterns use regex with `[\w$]{1,3}` wildcards to survive minified variable renames.
 
 ### Patch 1 — Auto-updater platform gate
 
@@ -69,6 +69,15 @@ Already uses `"droid"` for non-Windows — works on Linux as-is.
 
 Electron's `isPackaged` detection is unreliable on Linux. The dev-mode branch (Vite dev server on `localhost:5173`) is removed entirely — the app always loads from the local file.
 
+### Patch 5 — Native Linux window controls
+
+```js
+// FIND:  /const ([\w$]{1,3})=process\.platform==="win32";([\w$]{1,3})=new ([\w$]{1,3})\.BrowserWindow\(\{backgroundColor:/
+// REPLACE: const $1=process.platform==="win32"||process.platform==="linux";$2=new $3.BrowserWindow({backgroundColor:
+```
+
+The upstream bundle hides the title bar on every non-Windows platform for macOS traffic-light controls. Linux should use the native window frame so minimize, maximize, and close buttons are provided by the desktop environment.
+
 ## Runtime details
 
 - **Auth**: `keytar` loads dynamically at runtime, falls back to file-based encrypted storage in `~/.config/Factory/` when `libsecret` is unavailable. Works out of the box on all Linux distros.
@@ -77,6 +86,7 @@ Electron's `isPackaged` detection is unreliable on Linux. The dev-mode branch (V
 - **Shell env**: On macOS, sources the user's shell profile. On Linux, falls through to an empty env (acceptable — the bundled droid binary doesn't need shell env).
 - **Diagnostics**: All platform-specific diagnostics (Windows domain check, endpoint protection, etc.) already return `"non-Windows platform; not applicable"` for Linux.
 - **Updates**: A systemd user timer checks daily and shows a desktop notification via `notify-send` when a new version is available. Run `factory-desktop-update` to install.
+- **Icon**: Packages install `assets/factory-desktop.svg` as `factory-desktop` in the hicolor icon theme, and the desktop entry references it with `Icon=factory-desktop`.
 
 ## Project structure
 
@@ -90,6 +100,8 @@ factory-desktop-linux/
 ├── .github/workflows/
 │   ├── release.yml              → CI: build on tag push
 │   └── daily-check.yml          → CI: daily version check + auto-release
+├── assets/
+│   └── factory-desktop.svg      → Linux desktop launcher icon
 ├── scripts/
 │   ├── patch.js                 → JS bundle patcher (auto-detects filename, regex-based)
 │   ├── check-patches.py         → Patch verification (auto-detects filename, regex)
@@ -102,7 +114,7 @@ factory-desktop-linux/
 │   ├── factory-desktop-update-check.sh  → Daily update checker (systemd timer)
 │   ├── factory-desktop-update-check.service → systemd user service
 │   ├── factory-desktop-update-check.timer  → systemd user timer
-│   └── test.sh                  → Test suite (20 tests)
+│   └── test.sh                  → Test suite (25 tests)
 └── dist/                        → Built packages (not committed)
 ```
 
@@ -122,9 +134,9 @@ sudo dpkg -i dist/factory-desktop_*.deb
 | `make all` | Full pipeline (download + extract + patch + package) |
 | `make download` | Download macOS DMG |
 | `make extract` | Extract app.asar from DMG |
-| `make patch` | Apply 4 Linux compatibility patches |
+| `make patch` | Apply 5 Linux compatibility patches |
 | `make check` | Verify all patches applied correctly |
-| `make test` | Run full test suite (20 tests) |
+| `make test` | Run full test suite (25 tests) |
 | `make asar` | Repack patched files into app.asar |
 | `make electron` | Download Linux Electron 39.2.7 |
 | `make assemble` | Combine Electron + patched asar + droid wrapper |

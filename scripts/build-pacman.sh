@@ -18,6 +18,7 @@ ARCH="x86_64"
 PKG_NAME="factory-desktop"
 PKG_DIR="$PROJECT_DIR/build/pkg/$PKG_NAME"
 DEST_DIR="$PKG_DIR/opt/factory-desktop"
+ICON_SOURCE="$PROJECT_DIR/assets/factory-desktop.svg"
 
 echo "[build-pacman] Creating Arch package: $PKG_NAME-$VERSION-1-$ARCH"
 
@@ -32,6 +33,11 @@ BUILD_DIR="$PROJECT_DIR/build"
 if [ ! -f "$BUILD_DIR/app.asar" ]; then
     echo "ERROR: app.asar not found at $BUILD_DIR/app.asar" >&2
     echo "Run 'make asar' first." >&2
+    exit 1
+fi
+
+if [ ! -f "$ICON_SOURCE" ]; then
+    echo "ERROR: Factory icon not found at $ICON_SOURCE" >&2
     exit 1
 fi
 
@@ -130,10 +136,12 @@ StartupWMClass=Factory
 Terminal=false
 DESKTOP
 
-# ── Icon (placeholder) ──────────────────────────────────────────────
+# ── Icon ────────────────────────────────────────────────────────────
 
-mkdir -p "$PKG_DIR/usr/share/icons/hicolor/256x256/apps"
-touch "$PKG_DIR/usr/share/icons/hicolor/256x256/apps/factory-desktop.png"
+mkdir -p "$PKG_DIR/usr/share/icons/hicolor/scalable/apps"
+mkdir -p "$PKG_DIR/usr/share/pixmaps"
+cp "$ICON_SOURCE" "$PKG_DIR/usr/share/icons/hicolor/scalable/apps/factory-desktop.svg"
+cp "$ICON_SOURCE" "$PKG_DIR/usr/share/pixmaps/factory-desktop.svg"
 
 # ── .PKGINFO ───────────────────────────────────────────────────────
 

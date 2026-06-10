@@ -66,6 +66,13 @@ checks = [
             content
         )),
     ),
+    (
+        "Patch 5: Linux uses native window title bar controls",
+        bool(re.search(
+            r'const [\w$]{1,3}=process\.platform==="win32"\|\|process\.platform==="linux";[\w$]{1,3}=new [\w$]{1,3}\.BrowserWindow\(\{backgroundColor:',
+            content
+        )),
+    ),
 ]
 
 all_ok = True

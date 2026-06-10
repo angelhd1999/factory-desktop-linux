@@ -12,6 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="${PROJECT_DIR}/build"
 DIST_DIR="${PROJECT_DIR}/dist"
+ICON_SOURCE="${PROJECT_DIR}/assets/factory-desktop.svg"
 
 VERSION="${1:-0.82.0}"
 PACKAGE_NAME="factory-desktop"
@@ -30,6 +31,11 @@ if [ ! -f "${BUILD_DIR}/app.asar" ]; then
     exit 1
 fi
 
+if [ ! -f "${ICON_SOURCE}" ]; then
+    echo "ERROR: Factory icon not found at ${ICON_SOURCE}" >&2
+    exit 1
+fi
+
 # ── Create package structure ────────────────────────────────────────
 
 echo "[build-deb] Creating package structure for ${DEB_NAME}..."
@@ -37,7 +43,8 @@ echo "[build-deb] Creating package structure for ${DEB_NAME}..."
 rm -rf "${PACKAGE_DIR}"
 mkdir -p "${PACKAGE_DIR}/opt/${PACKAGE_NAME}"
 mkdir -p "${PACKAGE_DIR}/usr/share/applications"
-mkdir -p "${PACKAGE_DIR}/usr/share/icons/hicolor/256x256/apps"
+mkdir -p "${PACKAGE_DIR}/usr/share/icons/hicolor/scalable/apps"
+mkdir -p "${PACKAGE_DIR}/usr/share/pixmaps"
 mkdir -p "${PACKAGE_DIR}/usr/bin"
 mkdir -p "${PACKAGE_DIR}/DEBIAN"
 
@@ -115,6 +122,9 @@ cp "${SCRIPT_DIR}/factory-desktop-update-check.timer" "${PACKAGE_DIR}/usr/lib/sy
 ln -sf "/opt/${PACKAGE_NAME}/factory-desktop" "${PACKAGE_DIR}/usr/bin/${PACKAGE_NAME}"
 ln -sf "/opt/${PACKAGE_NAME}/factory-desktop-update" "${PACKAGE_DIR}/usr/bin/${PACKAGE_NAME}-update"
 
+cp "${ICON_SOURCE}" "${PACKAGE_DIR}/usr/share/icons/hicolor/scalable/apps/${PACKAGE_NAME}.svg"
+cp "${ICON_SOURCE}" "${PACKAGE_DIR}/usr/share/pixmaps/${PACKAGE_NAME}.svg"
+
 cat > "${PACKAGE_DIR}/usr/share/applications/${PACKAGE_NAME}.desktop" << DESKTOP
 [Desktop Entry]
 Name=Factory
@@ -178,6 +188,14 @@ echo ""
 echo "Optional: enable automatic daily update checks:"
 echo "  systemctl --user enable --now factory-desktop-update-check.timer"
 echo ""
+
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache -f /usr/share/icons/hicolor >/dev/null 2>&1 || true
+fi
+
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
+fi
 
 exit 0
 POSTINST
